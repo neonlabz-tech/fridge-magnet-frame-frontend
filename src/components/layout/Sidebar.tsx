@@ -56,17 +56,14 @@ export default function Sidebar({
     >
       {/* Logo */}
       <div
-        className="flex flex-shrink-0 items-center justify-start"
+        className="flex flex-shrink-0 items-left justify-left"
         style={{
-          height: 88,
+          height: 89,
+          // borderBottom: '1px solid #F1F5F9',
           padding: '0 24px',
         }}
       >
-        <Link
-          href="/dashboard/products"
-          onClick={onClose}
-          className="flex items-center gap-3"
-        >
+        <Link href="/dashboard/products" className="flex items-center gap-3">
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#F8FAFC] p-1.5 ring-1 ring-slate-200/60">
             <Image
               src="/magnifyfi.png"
@@ -105,11 +102,11 @@ export default function Sidebar({
               className={`group mx-3 flex items-center gap-3 rounded-lg px-5 py-3 transition-colors ${
                 isActive
                   ? 'text-white'
-                  : 'text-white hover:bg-white hover:text-[#D83223]'
+                  : 'text-white hover:bg-[#2563EB] hover:text-white'
               }`}
               style={{
                 background: isActive
-                  ? '#D83223'
+                  ? '#2563EB'
                   : 'transparent',
               }}
             >
@@ -118,7 +115,7 @@ export default function Sidebar({
                 className={`flex-shrink-0 transition-colors ${
                   isActive
                     ? 'text-white'
-                    : 'text-white group-hover:text-[#D83223]'
+                    : 'text-white group-hover:text-[#2563EB]'
                 }`}
               />
 
@@ -126,7 +123,7 @@ export default function Sidebar({
                 className={`text-[14px] transition-colors ${
                   isActive
                     ? 'font-semibold text-white'
-                    : 'font-medium text-white group-hover:text-[#D83223]'
+                    : 'font-medium text-white group-hover:text-[#2563EB]'
                 }`}
               >
                 {label}
