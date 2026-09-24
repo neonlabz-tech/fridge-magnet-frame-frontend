@@ -66,7 +66,7 @@ export default function Sidebar({
         <Link href="/dashboard/products" className="flex items-center gap-3">
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#F8FAFC] p-1.5 ring-1 ring-slate-200/60">
             <Image
-              src="/magnifyfi.png"
+              src="/logo.png"
               alt="Magnify"
               width={44}
               height={44}
