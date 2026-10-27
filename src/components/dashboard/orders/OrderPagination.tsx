@@ -1,7 +1,9 @@
-import type { ReactNode } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+'use client';
 
-type PageNumber = number | "ellipsis";
+import type { ReactNode } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+type PageNumber = number | 'ellipsis';
 
 function PageBtn({
   children,
@@ -22,13 +24,15 @@ function PageBtn({
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
-      aria-current={active ? "page" : undefined}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-xs font-semibold transition sm:h-9 sm:w-9 sm:rounded-lg sm:text-sm"
-      style={{
-        background: active ? "#002B73" : "transparent",
-        color: active ? "#fff" : disabled ? "#CBD5E1" : "#475569",
-        cursor: disabled ? "not-allowed" : "pointer",
-      }}
+      aria-current={active ? 'page' : undefined}
+      style={{ fontSize: '12px', minHeight: 0, padding: 0 }}
+      className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition ${
+        active
+          ? 'bg-[#2563EB] text-white shadow-xs'
+          : disabled
+          ? 'cursor-not-allowed text-[#CBD5E1]'
+          : 'text-[#475569] hover:bg-slate-100'
+      }`}
     >
       {children}
     </button>
@@ -41,29 +45,14 @@ function getPageNumbers(currentPage: number, totalPages: number): PageNumber[] {
   }
 
   if (currentPage <= 3) {
-    return [1, 2, 3, 4, "ellipsis", totalPages];
+    return [1, 2, 3, 4, 'ellipsis', totalPages];
   }
 
   if (currentPage >= totalPages - 2) {
-    return [
-      1,
-      "ellipsis",
-      totalPages - 3,
-      totalPages - 2,
-      totalPages - 1,
-      totalPages,
-    ];
+    return [1, 'ellipsis', totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
   }
 
-  return [
-    1,
-    "ellipsis",
-    currentPage - 1,
-    currentPage,
-    currentPage + 1,
-    "ellipsis",
-    totalPages,
-  ];
+  return [1, 'ellipsis', currentPage - 1, currentPage, currentPage + 1, 'ellipsis', totalPages];
 }
 
 interface OrderPaginationProps {
@@ -84,82 +73,65 @@ export default function OrderPagination({
   onPageChange,
 }: OrderPaginationProps) {
   const safeTotalPages = Math.max(1, totalPages);
-
   const safeCurrentPage = Math.min(Math.max(1, currentPage), safeTotalPages);
-
   const pageNumbers = getPageNumbers(safeCurrentPage, safeTotalPages);
 
   const hasPrevious = safeCurrentPage > 1;
-
   const hasNext = safeCurrentPage < safeTotalPages;
 
   return (
-    <div
-      className="flex min-h-[52px] flex-shrink-0 flex-col gap-2 border-t px-3 py-2.5 sm:min-h-[53px] sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-2 lg:px-6"
-      style={{
-        borderColor: "#C3C6D4",
-        background: "#fff",
-      }}
-    >
-      <p
-        className="text-center text-xs font-medium sm:text-left sm:text-sm"
-        style={{ color: "#434652" }}
-      >
+    <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p className="text-center text-xs font-medium text-[#64748B] sm:text-left">
         {totalItems === 0
-          ? "0 of 0"
-          : `${startItem}–${endItem} of ${totalItems}`}
+          ? 'No orders'
+          : `Showing ${startItem}–${endItem} of ${totalItems} orders`}
       </p>
 
-      {totalItems > 0 && (
-        <div className="flex items-center justify-center gap-0.5 sm:gap-1">
-          {/* Previous */}
-          <PageBtn
-            onClick={() => onPageChange(safeCurrentPage - 1)}
-            disabled={!hasPrevious}
-            ariaLabel="Previous page"
-          >
-            <ChevronLeft size={14} />
-          </PageBtn>
+      <div className="flex items-center justify-center gap-1 sm:gap-1.5">
+        {/* Previous */}
+        <PageBtn
+          onClick={() => onPageChange(safeCurrentPage - 1)}
+          disabled={!hasPrevious}
+          ariaLabel="Previous page"
+        >
+          <ChevronLeft size={16} />
+        </PageBtn>
 
-          {/* Page Numbers */}
-          <div className="flex items-center gap-0.5 sm:gap-1">
-            {pageNumbers.map((pageNumber, index) => {
-              // Ellipsis
-              if (pageNumber === "ellipsis") {
-                return (
-                  <span
-                    key={`ellipsis-${index}`}
-                    className="flex h-8 w-6 items-center justify-center text-xs font-semibold text-slate-400 sm:h-9 sm:w-7 sm:text-sm"
-                  >
-                    ...
-                  </span>
-                );
-              }
+        {/* Page numbers */}
+        {pageNumbers.map((pageNumber, index) => {
+          if (pageNumber === 'ellipsis') {
+            return (
+              <span
+                key={`ellipsis-${index}`}
+                className="flex h-8 w-6 items-center justify-center text-xs font-semibold text-slate-400 sm:h-9 sm:w-7"
+                style={{ fontSize: '12px' }}
+              >
+                ...
+              </span>
+            );
+          }
 
-              // Page number
-              return (
-                <PageBtn
-                  key={pageNumber}
-                  active={pageNumber === safeCurrentPage}
-                  onClick={() => onPageChange(pageNumber)}
-                  ariaLabel={`Page ${pageNumber}`}
-                >
-                  {pageNumber}
-                </PageBtn>
-              );
-            })}
-          </div>
+          return (
+            <PageBtn
+              key={pageNumber}
+              active={pageNumber === safeCurrentPage}
+              onClick={() => onPageChange(pageNumber)}
+              ariaLabel={`Page ${pageNumber}`}
+            >
+              {pageNumber}
+            </PageBtn>
+          );
+        })}
 
-          {/* Next */}
-          <PageBtn
-            onClick={() => onPageChange(safeCurrentPage + 1)}
-            disabled={!hasNext}
-            ariaLabel="Next page"
-          >
-            <ChevronRight size={14} />
-          </PageBtn>
-        </div>
-      )}
+        {/* Next */}
+        <PageBtn
+          onClick={() => onPageChange(safeCurrentPage + 1)}
+          disabled={!hasNext}
+          ariaLabel="Next page"
+        >
+          <ChevronRight size={16} />
+        </PageBtn>
+      </div>
     </div>
   );
 }

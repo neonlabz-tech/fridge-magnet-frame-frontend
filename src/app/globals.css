@@ -2,6 +2,12 @@
 
 :root {
   color-scheme: light;
+  /* Brand colours taken from the Magnify logo */
+  --brand: #0b3cb0;
+  --brand-dark: #082b82;
+  --brand-soft: #e8eefb;
+  --accent: #f03020;
+  --surface: #f3f6fc;
   --background: #ffffff;
   --foreground: #0f172a;
 }
@@ -19,6 +25,15 @@
     --foreground: #ededed;
   }
 }
+
+/* Re-colour the blue used across the dashboard to the logo blue */
+.bg-\[\#2563EB\] { background-color: var(--brand); }
+.hover\:bg-\[\#1D4ED8\]:hover { background-color: var(--brand-dark); }
+.hover\:bg-\[\#2563EB\]:hover { background-color: var(--brand); }
+.text-\[\#2563EB\] { color: var(--brand); }
+.hover\:text-\[\#2563EB\]:hover { color: var(--brand); }
+.border-\[\#2563EB\] { border-color: var(--brand); }
+.focus\:border-\[\#2563EB\]:focus { border-color: var(--brand); }
 
 html {
   box-sizing: border-box;
@@ -123,4 +138,43 @@ input {
   to {
     transform: translate3d(calc(-50% - 10px), 0, 0);
   }
+}
+
+/* Direct Order modal: every text, button, input and placeholder is 12px */
+.direct-order-modal,
+.direct-order-modal * {
+  font-size: 12px !important;
+}
+.direct-order-modal button {
+  min-height: 0;
+}
+
+/* Compact UI scope (orders page + modals): keep Tailwind sizing on mobile.
+   The blanket mobile rules above are unlayered, so they beat Tailwind utilities;
+   revert-layer hands control back to the utility classes. */
+@media (max-width: 640px) {
+  .compact-ui button,
+  .compact-ui input,
+  .compact-ui textarea,
+  .compact-ui select {
+    min-height: revert-layer;
+    padding: revert-layer;
+    width: revert-layer;
+    border-radius: revert-layer;
+    font-size: revert-layer;
+  }
+}
+
+/* Dashboard content: every text, button, input, pagination and badge is 12px.
+   (SVG chart labels keep their own sizes.) */
+.dashboard-main,
+.dashboard-main *:not(svg *):not(svg) {
+  font-size: 12px !important;
+}
+
+/* Headings: page titles and modal titles are 16px */
+.dashboard-main h1:not(svg *):not(svg),
+.dashboard-main .fixed h2:not(svg *):not(svg) {
+  font-size: 16px !important;
+  line-height: 1.4 !important;
 }

@@ -1,11 +1,5 @@
-'use client'
-
-import ProductsPage from "./products/page"
+import OverviewView from '@/components/dashboard/overview/OverviewView';
 
 export default function DashboardPage() {
-  return (
-    <main>
-     <ProductsPage/>
-    </main>
-  )
+  return <OverviewView />;
 }

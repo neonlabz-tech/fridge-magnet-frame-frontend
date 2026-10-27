@@ -27,6 +27,8 @@ export interface Product {
   lastUpdatedBy?: string;
   lastUpdatedDate?: string;
   isPopular?: boolean;
+  manufactureCost?: number;
+  isActive?: boolean;
   image?: string;
   imageUrl?: string;
 }
@@ -37,6 +39,7 @@ export interface ProductFormData {
   category: string;
   stock: number;
   price: number;
+  manufactureCost?: number;
   imagecount:number;
   description: string;
   personalization: boolean;
