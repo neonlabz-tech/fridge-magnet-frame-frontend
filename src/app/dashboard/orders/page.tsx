@@ -20,6 +20,7 @@ import OrderPagination from '@/components/dashboard/orders/OrderPagination';
 import { downloadOrdersPdf } from '@/lib/ordersPdf';
 import OrderStats from '@/components/dashboard/orders/OrderStats';
 import OrderTable from '@/components/dashboard/orders/OrderTable';
+import ShippingLabelModal from '@/components/dashboard/orders/ShippingLabelModal';
 import DirectOrderModal from '@/components/dashboard/orders/DirectOrderModal';
 import { fetchOrders } from '@/lib/orders';
 import { TableSkeleton } from '@/components/dashboard/shared/Skeleton';
@@ -34,8 +35,15 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
   const [viewTarget, setViewTarget] = useState<Order | null>(null);
+  const [labelTarget, setLabelTarget] = useState<Order | null>(null);
   const [addOrderOpen, setAddOrderOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Allow deep links such as /dashboard/orders?search=ORD-123 (used by the customers page)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('search');
+    if (q) setSearchTerm(q);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -240,6 +248,12 @@ export default function OrdersPage() {
   return (
     <div className="compact-ui relative w-full min-h-full px-3 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-8 lg:pb-4 lg:pt-4 max-w-7xl mx-auto lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
       {/* Modals */}
+      <ShippingLabelModal
+        order={labelTarget}
+        isOpen={Boolean(labelTarget)}
+        onClose={() => setLabelTarget(null)}
+        autoPrint
+      />
       <DeleteOrderModal
         isOpen={Boolean(deleteTarget)}
         order={deleteTarget}
@@ -315,6 +329,7 @@ export default function OrdersPage() {
             onToggleSelectAll={handleToggleSelectAll}
             onToggleSelectOne={handleToggleSelectOne}
             onView={setViewTarget}
+            onShippingLabel={setLabelTarget}
             onDelete={setDeleteTarget}
           />
         )}

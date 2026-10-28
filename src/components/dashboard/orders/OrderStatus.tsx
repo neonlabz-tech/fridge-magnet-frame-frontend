@@ -47,6 +47,19 @@ const PAYMENT_STATUSES: { value: PaymentStatus; label: string; color: string }[]
   { value: 'refunded', label: 'Refunded', color: 'text-rose-700 bg-rose-50' },
 ];
 
+const formatPaymentMethod = (method?: string) => {
+  switch ((method || '').toLowerCase()) {
+    case 'cod':
+      return 'Cash on Delivery';
+    case 'bank_transfer':
+      return 'Bank Transfer';
+    case 'card':
+      return 'Card';
+    default:
+      return method || '-';
+  }
+};
+
 export default function OrderStatus({
   order,
   isOpen,
@@ -416,6 +429,46 @@ export default function OrderStatus({
                         LKR {totalAmount.toLocaleString()}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Payment Method & Bank Transfer Receipt */}
+                  <div className="mt-4 space-y-2 border-t border-[#F1F5F9] pt-3 text-[12px]" style={{ fontSize: '12px' }}>
+                    <div className="flex justify-between text-[#64748B]" style={{ fontSize: '12px' }}>
+                      <span style={{ fontSize: '12px' }}>Payment Method</span>
+                      <span className="font-semibold text-[#0F172A]" style={{ fontSize: '12px' }}>
+                        {formatPaymentMethod(currentOrder.paymentMethod)}
+                      </span>
+                    </div>
+
+                    {currentOrder.paymentSlipUrl && (
+                      <div>
+                        <p className="mb-1.5 text-[#64748B]" style={{ fontSize: '12px' }}>Bank Transfer Receipt</p>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImageUrl(currentOrder.paymentSlipUrl!)}
+                          className="group relative block h-28 w-full overflow-hidden rounded-xl border border-[#CBD5E1] bg-white shadow-2xs transition hover:ring-2 hover:ring-[#2563EB]"
+                          title="Click to view the full receipt"
+                        >
+                          <Image
+                            src={currentOrder.paymentSlipUrl}
+                            alt="Bank transfer receipt"
+                            fill
+                            sizes="320px"
+                            className="object-contain"
+                          />
+                        </button>
+                        <a
+                          href={currentOrder.paymentSlipUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1.5 inline-flex items-center gap-1 font-bold text-[#2563EB] hover:underline"
+                          style={{ fontSize: '12px' }}
+                        >
+                          <ExternalLink size={12} />
+                          Open receipt in new tab
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </div>
 

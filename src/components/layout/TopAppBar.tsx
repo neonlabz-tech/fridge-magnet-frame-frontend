@@ -1,143 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, Menu, Package, ShoppingBag, UserCircle2 } from "lucide-react";
+import { Bell, Menu, UserCircle2 } from "lucide-react";
 import Link from "next/link";
-import { apiV1Url } from "@/lib/backendUrl";
 import { DEMO_SESSION_KEY, type DemoSession } from "@/lib/demoAuth";
 
-type NotifItem = {
-  id: string;
-  type: "order" | "stock-low" | "stock-out";
-  title: string;
-  sub: string;
-  href: string;
-  /** Small third line, e.g. "Pending · 2 h ago". */
-  meta?: string;
-  createdAt?: string;
-};
-
-function timeAgo(iso?: string): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(diff) || diff < 0) return "";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.floor(h / 24);
-  return d === 1 ? "yesterday" : `${d} days ago`;
-}
-
-type ApiOrder = {
-  _id?: string;
-  orderId: string;
-  customerName: string;
-  status: string;
-  createdAt?: string;
-};
-
-type ApiProduct = {
-  _id?: string;
-  productName: string;
-  productId: string;
-  status: string;
-  stock: number;
-};
-
-const LAST_SEEN_KEY = "admin_notif_last_seen";
-
-function getLastSeenTimestamp(): number {
-  if (typeof window === "undefined") return 0;
-  const val = localStorage.getItem(LAST_SEEN_KEY);
-  return val ? parseInt(val, 10) : 0;
-}
-
-function setLastSeenTimestamp(): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(LAST_SEEN_KEY, Date.now().toString());
-}
-
-async function fetchNotifications(): Promise<NotifItem[]> {
-  const items: NotifItem[] = [];
-
-  try {
-    const [ordersRes, lowRes, outRes] = await Promise.all([
-      fetch(apiV1Url("/orders?status=PENDING"), { cache: "no-store" }),
-      fetch(apiV1Url("/products?status=Low+Stock&limit=5"), {
-        cache: "no-store",
-      }),
-      fetch(apiV1Url("/products?status=Out+of+Stock&limit=5"), {
-        cache: "no-store",
-      }),
-    ]);
-
-    if (ordersRes.ok) {
-      const orders = (await ordersRes.json()) as ApiOrder[];
-      const recent = orders.slice(0, 10);
-      for (const o of recent) {
-        items.push({
-          id: `order-${o._id || o.orderId}`,
-          type: "order",
-          title: `New order · ${o.customerName}`,
-          sub: `#${o.orderId}`,
-          meta: [o.status.charAt(0) + o.status.slice(1).toLowerCase(), timeAgo(o.createdAt)].filter(Boolean).join(" · "),
-          href: `/dashboard/orders`,
-          createdAt: o.createdAt,
-        });
-      }
-    }
-
-    const extractProducts = async (res: Response): Promise<ApiProduct[]> => {
-      if (!res.ok) return [];
-      const body = await res.json();
-      if (Array.isArray(body)) return body as ApiProduct[];
-      return (body?.data?.products ?? body?.products ?? []) as ApiProduct[];
-    };
-
-    const [lowProducts, outProducts] = await Promise.all([
-      extractProducts(lowRes),
-      extractProducts(outRes),
-    ]);
-
-    for (const p of outProducts.slice(0, 3)) {
-      items.push({
-        id: `stock-out-${p._id || p.productId}`,
-        type: "stock-out",
-        title: `Out of stock: ${p.productName}`,
-        sub: `SKU ${p.productId} · 0 units remaining`,
-        href: `/dashboard/products`,
-      });
-    }
-
-    for (const p of lowProducts.slice(0, 3)) {
-      items.push({
-        id: `stock-low-${p._id || p.productId}`,
-        type: "stock-low",
-        title: `Low stock: ${p.productName}`,
-        sub: `SKU ${p.productId} · ${p.stock} units left`,
-        href: `/dashboard/products`,
-      });
-    }
-  } catch {
-    // silently return whatever was collected before the error
-  }
-
-  return items;
-}
-
-const iconFor = (type: NotifItem["type"]) => {
-  if (type === "order") return <ShoppingBag size={15} color="#002B73" />;
-  if (type === "stock-out") return <Package size={15} color="#BC0000" />;
-  return <Package size={15} color="#D97706" />;
-};
-
-const dotColor = (type: NotifItem["type"]) => {
-  if (type === "order") return "#DAE2FF";
-  if (type === "stock-out") return "#FFE4E4";
-  return "#FEF3C7";
-};
+import {
+  NOTIF_EVENT,
+  clearFromDropdown,
+  dotColor,
+  fetchNotifications,
+  getClearedIds,
+  getReadIds,
+  iconFor,
+  markRead,
+  type NotifItem,
+} from "@/lib/notifications";
 
 /** Polling interval in ms — check for new notifications every 15 seconds */
 const POLL_INTERVAL = 15_000;
@@ -149,8 +27,9 @@ export default function TopAppBar({
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [notifs, setNotifs] = useState<NotifItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [allNotifs, setAllNotifs] = useState<NotifItem[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [clearedIds, setClearedIds] = useState<Set<string>>(new Set());
   const [demoSession, setDemoSession] = useState<DemoSession | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bellRef = useRef<HTMLDivElement | null>(null);
@@ -184,28 +63,27 @@ export default function TopAppBar({
     }
   }, []);
 
-  // Calculate unread count based on last-seen timestamp
-  const calcUnread = useCallback((items: NotifItem[]) => {
-    const lastSeen = getLastSeenTimestamp();
-    if (lastSeen === 0) {
-      // First visit — show total count
-      return items.length;
-    }
-    // Count items created after last seen
-    const newItems = items.filter((item) => {
-      if (!item.createdAt) return true; // no timestamp = treat as new
-      return new Date(item.createdAt).getTime() > lastSeen;
-    });
-    return newItems.length;
+  const syncStored = useCallback(() => {
+    setReadIds(getReadIds());
+    setClearedIds(getClearedIds());
   }, []);
 
-  // Fetch and update notifications
+  // Keep read/cleared state in sync (other tabs + the All notifications page)
+  useEffect(() => {
+    syncStored();
+    window.addEventListener(NOTIF_EVENT, syncStored);
+    window.addEventListener("storage", syncStored);
+    return () => {
+      window.removeEventListener(NOTIF_EVENT, syncStored);
+      window.removeEventListener("storage", syncStored);
+    };
+  }, [syncStored]);
+
   const refresh = useCallback(async () => {
     const data = await fetchNotifications();
-    setNotifs(data);
-    setUnreadCount(calcUnread(data));
+    setAllNotifs(data);
     return data;
-  }, [calcUnread]);
+  }, []);
 
   // Initial fetch + start polling
   useEffect(() => {
@@ -215,42 +93,41 @@ export default function TopAppBar({
       setLoading(true);
       const data = await fetchNotifications();
       if (!active) return;
-      setNotifs(data);
-      setUnreadCount(calcUnread(data));
+      setAllNotifs(data);
       setLoading(false);
     })();
 
-    // Poll for new notifications
     pollRef.current = setInterval(async () => {
       if (!active) return;
       const data = await fetchNotifications();
       if (!active) return;
-      setNotifs(data);
-      setUnreadCount(calcUnread(data));
+      setAllNotifs(data);
     }, POLL_INTERVAL);
 
     return () => {
       active = false;
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [calcUnread]);
+  }, []);
+
+  // The dropdown only lists notifications that were not cleared
+  const notifs = allNotifs.filter((n) => !clearedIds.has(n.id));
+  const unreadCount = notifs.filter((n) => !readIds.has(n.id)).length;
 
   const handleBellClick = useCallback(async () => {
     if (open) {
       setOpen(false);
       return;
     }
-
     setOpen(true);
-    // Mark as seen when user opens the dropdown
-    setLastSeenTimestamp();
-    setUnreadCount(0);
-
-    // Refresh on open
     setLoading(true);
     await refresh();
     setLoading(false);
   }, [open, refresh]);
+
+  const handleClear = () => {
+    clearFromDropdown(notifs.map((n) => n.id));
+  };
 
   return (
     <>
@@ -374,11 +251,22 @@ export default function TopAppBar({
                     Notifications
                   </span>
 
-                  {notifs.length > 0 && (
-                    <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-xs font-semibold text-[#002B73]">
-                      {notifs.length}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {notifs.length > 0 && (
+                      <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-xs font-semibold text-[#002B73]">
+                        {notifs.length}
+                      </span>
+                    )}
+                    {notifs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClear}
+                        className="rounded-md px-2 py-0.5 text-xs font-bold text-[#BC0000] transition hover:bg-red-50"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Notification list */}
@@ -418,7 +306,10 @@ export default function TopAppBar({
                         >
                           <Link
                             href={n.href}
-                            onClick={() => setOpen(false)}
+                            onClick={() => {
+                              markRead([n.id]);
+                              setOpen(false);
+                            }}
                             className="
                   flex items-start gap-3
                   bg-white
@@ -437,8 +328,11 @@ export default function TopAppBar({
                             </span>
 
                             <div className="min-w-0 flex-1">
-                              <p className="break-words text-sm font-semibold leading-snug text-[#1A1C1F]">
+                              <p className="flex items-center gap-2 break-words text-sm font-semibold leading-snug text-[#1A1C1F]">
                                 {n.title}
+                                {!readIds.has(n.id) && (
+                                  <span className="size-2 shrink-0 rounded-full bg-red-500" aria-label="Unread" />
+                                )}
                               </p>
 
                               <p className="mt-0.5 break-all text-xs font-medium text-[#64748B]">
@@ -466,10 +360,11 @@ export default function TopAppBar({
                   }}
                 >
                   <Link
-                    href="/dashboard/orders"
+                    href="/dashboard/notifications"
+                    onClick={() => setOpen(false)}
                     className="text-xs font-bold text-[#002B73]"
                   >
-                    View all orders →
+                    View all notifications →
                   </Link>
                 </div>
               </div>
