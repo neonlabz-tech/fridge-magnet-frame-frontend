@@ -1,288 +1,146 @@
+'use client';
+
 import {
+  ArrowUpDown,
   Check,
-  ChevronDown,
-  Filter,
-  SlidersHorizontal,
-} from "lucide-react";
+  CheckSquare,
+} from 'lucide-react';
+import type { OrderStatus } from '@/types/order';
 
-import type { OrderStatus } from "@/types/order";
+export type OrderFilterStatus = 'all' | OrderStatus;
+export type OrderSortBy =
+  | 'default'
+  | 'date-desc'
+  | 'date-asc'
+  | 'id-asc'
+  | 'id-desc'
+  | 'name-asc'
+  | 'name-desc'
+  | 'amount-desc'
+  | 'amount-asc';
 
-type OrderFilterStatus = "all" | OrderStatus;
-
-type OrderSortBy =
-  | "default"
-  | "id-asc"
-  | "id-desc"
-  | "name-asc"
-  | "name-desc"
-  | "qty-asc"
-  | "qty-desc";
-
-const ORDER_FILTER_OPTIONS: {
-  value: OrderFilterStatus;
-  label: string;
-}[] = [
-  { value: "all", label: "All Orders" },
-  { value: "shipped", label: "Shipped" },
-  { value: "pending", label: "Pending" },
-  { value: "processing", label: "Processing" },
-  { value: "delivered", label: "Delivered" },
-  { value: "canceled", label: "Canceled" },
+const TABS: { value: OrderFilterStatus; label: string }[] = [
+  { value: 'all', label: 'All Orders' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'delivered', label: 'Completed' },
+  { value: 'canceled', label: 'Cancelled' },
 ];
 
-const ORDER_SORT_OPTIONS: {
-  value: OrderSortBy;
-  label: string;
-}[] = [
-  { value: "default", label: "Default" },
-  { value: "id-asc", label: "Order ID (A → Z)" },
-  { value: "id-desc", label: "Order ID (Z → A)" },
-  { value: "name-asc", label: "Customer (A → Z)" },
-  { value: "name-desc", label: "Customer (Z → A)" },
-  { value: "qty-asc", label: "Qty (Low → High)" },
-  { value: "qty-desc", label: "Qty (High → Low)" },
+const SORT_OPTIONS: { value: OrderSortBy; label: string }[] = [
+  { value: 'default', label: 'Latest (Default)' },
+  { value: 'date-asc', label: 'Oldest First' },
+  { value: 'amount-desc', label: 'Amount: High to Low' },
+  { value: 'amount-asc', label: 'Amount: Low to High' },
+  { value: 'name-asc', label: 'Customer (A → Z)' },
+  { value: 'id-desc', label: 'Order ID' },
 ];
 
 interface OrderFiltersProps {
   filterStatus: OrderFilterStatus;
   sortBy: OrderSortBy;
-  filterOpen: boolean;
-  sortOpen: boolean;
-  onFilterToggle: () => void;
-  onSortToggle: () => void;
+  sortOpen?: boolean;
+  isBulkMode?: boolean;
+  onToggleSort?: () => void;
+  onToggleBulkMode?: () => void;
   onFilterSelect: (filter: OrderFilterStatus) => void;
   onSortSelect: (sort: OrderSortBy) => void;
-  startItem: number;
-  endItem: number;
-  totalItems: number;
 }
 
 export default function OrderFilters({
   filterStatus,
   sortBy,
-  filterOpen,
   sortOpen,
-  onFilterToggle,
-  onSortToggle,
+  isBulkMode = false,
+  onToggleSort,
+  onToggleBulkMode,
   onFilterSelect,
   onSortSelect,
 }: OrderFiltersProps) {
   return (
-    <div>
-      {/* Left Controls */}
-      <div className="flex w-full items-center justify-end gap-2 sm:gap-4 pr-5">
-        <div className="relative">
-          <button
-            type="button"
-            onClick={onFilterToggle}
-            className="
-              flex items-center
-              gap-1.5 sm:gap-2
-              rounded-lg
-              px-2.5 py-1.5 sm:px-3
-              text-xs sm:text-sm
-              font-bold
-              transition
-              hover:opacity-80
-            "
-            style={{
-              color: filterStatus !== "all" ? "#002B73" : "#475569",
-              background:
-                filterStatus !== "all" ? "#EFF6FF" : "transparent",
-              border:
-                filterStatus !== "all"
-                  ? "1px solid #BFDBFE"
-                  : "1px solid transparent",
-            }}
-            aria-expanded={filterOpen}
-            aria-haspopup="listbox"
-          >
-            <Filter size={14} className="shrink-0" />
-
-            <span className="whitespace-nowrap">
-              {filterStatus === "all"
-                ? "Filter"
-                : ORDER_FILTER_OPTIONS.find(
-                    (option) => option.value === filterStatus,
-                  )?.label}
-            </span>
-
-            <ChevronDown
-              size={13}
-              className="shrink-0 transition-transform duration-150"
-              style={{
-                transform: filterOpen
-                  ? "rotate(180deg)"
-                  : "rotate(0deg)",
-              }}
-            />
-          </button>
-
-          {filterOpen && (
-            <div
-              className="
-                absolute right-0 top-full z-[100]
-                mt-1
-                w-[180px] sm:w-44
-                overflow-hidden
-                rounded-[10px]
-                bg-white
-                shadow-[0px_8px_16px_rgba(0,0,0,0.10)]
-              "
-              style={{
-                border: "1px solid #E2E8F0",
-              }}
+    <div className="mb-2.5 flex flex-col justify-between gap-2.5 border-b border-[#E2E8F0] pb-2.5 sm:flex-row sm:items-center">
+      {/* Status Tabs with Horizontal Scroll for Mobile */}
+      <div className="flex max-w-full items-center gap-1.5 overflow-x-auto py-0.5 scrollbar-none sm:gap-2">
+        {TABS.map((tab) => {
+          const isActive = filterStatus === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => onFilterSelect(tab.value)}
+              className={`whitespace-nowrap rounded-lg px-3 py-1.5 font-bold transition-all ${
+                isActive
+                  ? 'bg-[#2563EB] text-white shadow-xs'
+                  : 'text-[#64748B] hover:bg-slate-100 hover:text-[#0F172A]'
+              }`}
+              style={{ fontSize: '12px', lineHeight: '16px' }}
             >
-              {ORDER_FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => onFilterSelect(option.value)}
-                  className="
-                    flex w-full
-                    items-center justify-between
-                    px-4 py-2.5
-                    text-left
-                    text-sm font-medium
-                    transition
-                    hover:bg-slate-50
-                  "
-                  style={{
-                    color:
-                      filterStatus === option.value
-                        ? "#002B73"
-                        : "#475569",
-                    backgroundColor: "#FFFFFF",
-                  }}
-                >
-                  <span className="whitespace-nowrap">
-                    {option.label}
-                  </span>
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
 
-                  {filterStatus === option.value && (
-                    <Check
-                      size={14}
-                      color="#002B73"
-                      className="shrink-0"
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Right Controls: Bulk Select button & Sort By */}
+      <div className="flex items-center gap-2 self-end sm:self-auto">
+        {/* Bulk Select Button (Strictly 12px) */}
+        <button
+          type="button"
+          onClick={onToggleBulkMode}
+          className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 font-semibold transition shadow-2xs ${
+            isBulkMode
+              ? 'border-[#2563EB] bg-[#EFF6FF] text-[#2563EB]'
+              : 'border-[#E2E8F0] bg-white text-[#475569] hover:bg-slate-50'
+          }`}
+          style={{ fontSize: '12px', lineHeight: '16px' }}
+        >
+          <CheckSquare size={13} className={isBulkMode ? 'text-[#2563EB]' : 'text-[#94A3B8]'} />
+          <span style={{ fontSize: '12px', lineHeight: '16px' }}>
+            {isBulkMode ? 'Exit Selection' : 'Bulk Select'}
+          </span>
+        </button>
+
+        {/* Sort Menu */}
         <div className="relative">
           <button
             type="button"
-            onClick={onSortToggle}
-            className="
-              flex items-center
-              gap-1.5 sm:gap-2
-              rounded-lg
-              px-2.5 py-1.5 sm:px-3
-              text-xs sm:text-sm
-              font-bold
-              transition
-              hover:opacity-80
-            "
-            style={{
-              color: sortBy !== "default" ? "#002B73" : "#475569",
-              background:
-                sortBy !== "default" ? "#EFF6FF" : "transparent",
-              border:
-                sortBy !== "default"
-                  ? "1px solid #BFDBFE"
-                  : "1px solid transparent",
-            }}
-            aria-expanded={sortOpen}
-            aria-haspopup="listbox"
+            onClick={onToggleSort}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3 font-semibold text-[#475569] shadow-2xs hover:bg-slate-50"
+            style={{ fontSize: '12px', lineHeight: '16px' }}
           >
-            <SlidersHorizontal size={14} className="shrink-0" />
-
-            <span className="max-w-[100px] truncate whitespace-nowrap sm:max-w-none">
-              {sortBy === "default"
-                ? "Sort"
-                : ORDER_SORT_OPTIONS.find(
-                    (option) => option.value === sortBy,
-                  )?.label}
-            </span>
-
-            <ChevronDown
-              size={13}
-              className="shrink-0 transition-transform duration-150"
-              style={{
-                transform: sortOpen
-                  ? "rotate(180deg)"
-                  : "rotate(0deg)",
-              }}
-            />
+            <ArrowUpDown size={13} className="text-[#94A3B8]" />
+            <span style={{ fontSize: '12px', lineHeight: '16px' }}>Sort By</span>
           </button>
 
           {sortOpen && (
-            <div
-              className="
-                absolute right-0 top-full z-[100]
-                mt-1
-                w-[210px] sm:w-52
-                max-w-[calc(100vw-24px)]
-                overflow-hidden
-                rounded-[10px]
-                bg-white
-                shadow-[0px_8px_16px_rgba(0,0,0,0.10)]
-              "
-              style={{
-                border: "1px solid #E2E8F0",
-              }}
-            >
-              {ORDER_SORT_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => onSortSelect(option.value)}
-                  className="
-                    flex w-full
-                    items-center justify-between
-                    gap-3
-                    px-4 py-2.5
-                    text-left
-                    text-sm font-medium
-                    transition
-                    hover:bg-slate-50
-                  "
-                  style={{
-                    color:
-                      sortBy === option.value
-                        ? "#002B73"
-                        : "#475569",
-                    backgroundColor: "#FFFFFF",
-                  }}
-                >
-                  <span className="whitespace-nowrap">
-                    {option.label}
-                  </span>
-
-                  {sortBy === option.value && (
-                    <Check
-                      size={14}
-                      color="#002B73"
-                      className="shrink-0"
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={onToggleSort}
+                role="presentation"
+              />
+              <div className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-lg">
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onSortSelect(opt.value)}
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left font-medium transition hover:bg-slate-50 ${
+                      sortBy === opt.value
+                        ? 'bg-blue-50/70 text-[#2563EB] font-bold'
+                        : 'text-[#334155]'
+                    }`}
+                    style={{ fontSize: '12px', lineHeight: '16px' }}
+                  >
+                    <span style={{ fontSize: '12px' }}>{opt.label}</span>
+                    {sortBy === opt.value && <Check size={13} />}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
-
-      {/* Pagination Info */}
-      {/*
-      <p className="hidden text-sm font-medium text-[#434652] sm:block">
-        Showing {startItem}–{endItem} of {totalItems} orders
-      </p>
-      */}
     </div>
   );
 }
-
-export type { OrderFilterStatus, OrderSortBy };

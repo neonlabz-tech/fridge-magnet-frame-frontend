@@ -10,7 +10,7 @@ type TopCardsProps = {
 const TopCards = ({ onAddCustomer }: TopCardsProps) => {
   const { stats } = useCustomers();
   const satisfactionRate =
-    stats.satisfactionRate > 0 ? `${stats.satisfactionRate.toFixed(1)}%` : '-';
+    `${stats.satisfactionRate.toFixed(1)}%`;
 
   return (
     <>
@@ -19,9 +19,7 @@ const TopCards = ({ onAddCustomer }: TopCardsProps) => {
           <div className="statGroup">
             <span className="statTitle">Total Active Customers</span>
             <span className="statValue">
-              {stats.totalActiveCustomers > 0
-                ? stats.totalActiveCustomers.toLocaleString()
-                : '-'}
+              {stats.totalActiveCustomers.toLocaleString()}
             </span>
           </div>
 
@@ -75,6 +73,9 @@ const TopCards = ({ onAddCustomer }: TopCardsProps) => {
         }
 
         .statsCard {
+          background-color: #eff6ff;
+          border: 1px solid #dbeafe;
+          border-radius: 12px;
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -108,7 +109,7 @@ const TopCards = ({ onAddCustomer }: TopCardsProps) => {
         .chartPlaceholder {
           width: 44px;
           height: 40px;
-          background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+          background: rgba(255, 255, 255, 0.7);
           border-radius: 4px;
           display: flex;
           align-items: center;

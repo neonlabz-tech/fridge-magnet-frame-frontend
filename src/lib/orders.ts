@@ -1,5 +1,4 @@
 import type { Order, OrderStatus } from "@/types/order";
-import { ORDERS } from "@/data/orders";
 import { apiV1Url } from "@/lib/backendUrl";
 
 const normalizeCustomerId = (value: unknown) =>
@@ -24,6 +23,8 @@ type ApiOrder = {
   shippingAddress?: string;
   adminNote?: string;
   createdAt?: string;
+  deliveredAt?: string;
+  imagesDeletedAt?: string;
   items?: {
     productId?: string;
     sku?: string | null;
@@ -75,6 +76,8 @@ export const mapApiOrder = (order: ApiOrder): Order => {
     order.customerName ||
     "Customer";
 
+  const rawAny = order as Record<string, unknown>;
+
   return {
     id: order._id || order.id || order.orderId,
     _id: order._id,
@@ -89,12 +92,23 @@ export const mapApiOrder = (order: ApiOrder): Order => {
     customerId: resolvedCustomerId,
     qty: order.qty,
     status: statusFromApi(order.status),
+    paymentStatus: (rawAny.paymentStatus as any) || (order.status === "delivered" ? "paid" : "pending"),
+    paymentMethod: (rawAny.paymentMethod as string) || "Card",
+    preferredLanguage: (rawAny.preferredLanguage as "Tamil" | "English") || "Tamil",
+    allPhotosReceived: (rawAny.allPhotosReceived as boolean) ?? true,
     email: order.email,
     phone: order.phone,
     totalValue: order.totalValue,
+    subtotal: (rawAny.subtotal as number) ?? (order.totalValue ? Math.max(0, order.totalValue - 350) : 0),
+    deliveryFee: (rawAny.deliveryFee as number) ?? 350,
+    discount: (rawAny.discount as number) ?? 0,
+    district: (rawAny.district as string) || "Jaffna",
+    city: (rawAny.city as string) || "",
     shippingAddress: order.shippingAddress,
     adminNote: order.adminNote,
     createdAt: order.createdAt,
+    deliveredAt: order.deliveredAt,
+    imagesDeletedAt: order.imagesDeletedAt,
     items: order.items?.map((item) => ({
       productId: item.productId,
       sku: item.sku ?? null,
@@ -121,10 +135,10 @@ export const fetchOrders = async (): Promise<Order[]> => {
       return backendOrders.map(mapApiOrder);
     }
   } catch {
-    console.log("Backend not available, using mock orders");
+    console.log("Backend not available");
   }
 
-  return ORDERS;
+  return [];
 };
 
 export const fetchOrder = async (id: string): Promise<Order> => {
@@ -139,10 +153,6 @@ export const fetchOrder = async (id: string): Promise<Order> => {
   } catch {
     console.log("Backend not available, checking mock orders");
   }
-
-  const mockOrder = ORDERS.find((o) => o.id === id);
-
-  if (mockOrder) return mockOrder;
 
   throw new Error(`Order not found: ${id}`);
 };

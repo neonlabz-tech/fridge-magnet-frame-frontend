@@ -1,637 +1,693 @@
-"use client";
-import { useEffect, useState } from "react";
-import {
-  ShoppingBag,
-  List,
-  Truck,
-  Mail,
-  Phone,
-  MapPin,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  Loader2,
-  Download,
-} from "lucide-react";
-import { useToastStore } from "@/store/toastStore";
-import { mapApiOrder, statusToApi } from "@/lib/orders";
-import { apiV1Url } from "@/lib/backendUrl";
-import { getProductLineTotal } from "@/lib/productQuantityRules";
-import type { Order, OrderStatus as OrderStatusType } from "@/types/order";
-import Image from "next/image";
+'use client';
 
-type OrderWithMongoId = Order & { _id?: string };
-//imports
+import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import {
+  X,
+  Download,
+  Loader2,
+  Trash2,
+  Save,
+  Printer,
+  ChevronDown,
+  Check,
+  ExternalLink,
+  Phone,
+  Mail,
+  MapPin,
+  Globe,
+  Sparkles,
+} from 'lucide-react';
+import { useToastStore } from '@/store/toastStore';
+import { apiV1Url } from '@/lib/backendUrl';
+import { syncOrderStock } from '@/lib/orderStock';
+import type { Order, OrderStatus as OrderStatusType, PaymentStatus } from '@/types/order';
+import ShippingLabelModal from './ShippingLabelModal';
+import { ConfirmModal } from '@/components/dashboard/shared/UiKit';
+
 type OrderStatusProps = {
   order: Order | null;
   isOpen: boolean;
   onClose: () => void;
-  /** Called with the fresh order after a successful backend update, so the parent list can refresh */
   onUpdated?: (order: Order) => void;
+  onDeleteRequest?: (order: Order) => void;
 };
 
-const STATUS_OPTIONS: OrderStatusType[] = [
-  "pending",
-  "processing",
-  "shipped",
-  "delivered",
-  "canceled",
+const ORDER_STATUSES: { value: OrderStatusType; label: string; color: string }[] = [
+  { value: 'pending', label: 'Pending', color: 'text-amber-700 bg-amber-50' },
+  { value: 'processing', label: 'Processing', color: 'text-sky-700 bg-sky-50' },
+  { value: 'shipped', label: 'Shipped', color: 'text-blue-700 bg-blue-50' },
+  { value: 'delivered', label: 'Delivered', color: 'text-emerald-700 bg-emerald-50' },
+  { value: 'canceled', label: 'Cancelled', color: 'text-rose-700 bg-rose-50' },
 ];
 
-const STATUS_RANK: Record<OrderStatusType, number> = {
-  pending: 0,
-  processing: 1,
-  shipped: 2,
-  delivered: 3,
-  canceled: 4,
-};
-
-const normalizeCustomerId = (value?: string | null) =>
-  String(value ?? "").replace(/^#+/, "").trim();
-
-function getStatusStyle(status: string) {
-  switch (status) {
-    case "delivered":
-      return { bg: "#DCFCE7", text: "#15803D" };
-    case "shipped":
-      return { bg: "#DBEAFE", text: "#1D4ED8" };
-    case "processing":
-      return { bg: "#FEF3C7", text: "#B45309" };
-    case "pending":
-      return { bg: "#F1F5F9", text: "#475569" };
-    case "canceled":
-      return { bg: "#FEE2E2", text: "#B91C1C" };
-    default:
-      return { bg: "#F1F5F9", text: "#475569" };
-  }
-}
-
-function formatPlacedOn(dateInput?: string) {
-  if (!dateInput) return "-";
-  const date = new Date(dateInput);
-  if (Number.isNaN(date.getTime())) return "-";
-  const datePart = date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-  const timePart = date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${datePart} · ${timePart}`;
-}
+const PAYMENT_STATUSES: { value: PaymentStatus; label: string; color: string }[] = [
+  { value: 'paid', label: 'Paid', color: 'text-emerald-700 bg-emerald-50' },
+  { value: 'pending', label: 'Pending', color: 'text-amber-700 bg-amber-50' },
+  { value: 'refunded', label: 'Refunded', color: 'text-rose-700 bg-rose-50' },
+];
 
 export default function OrderStatus({
   order,
   isOpen,
   onClose,
   onUpdated,
+  onDeleteRequest,
 }: OrderStatusProps) {
   const { addToast } = useToastStore();
 
-  const [currentOrder, setCurrentOrder] = useState<OrderWithMongoId | null>(
-    order,
-  );
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [currentOrder, setCurrentOrder] = useState<Order | null>(order);
   const [saving, setSaving] = useState(false);
-  const [downloadingProduct, setDownloadingProduct] = useState<number | null>(
-    null,
-  );
-  const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(
-    null,
-  );
-  const [adminNote, setAdminNote] = useState("");
+  const [downloadingItemIndex, setDownloadingItemIndex] = useState<number | null>(null);
+  const [shippingLabelOpen, setShippingLabelOpen] = useState(false);
+  const [deletePhotosOpen, setDeletePhotosOpen] = useState(false);
+  const [deletingPhotos, setDeletingPhotos] = useState(false);
 
-  // Keep local order in sync whenever a different order is opened
+  // Form states
+  const [customerName, setCustomerName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [orderStatus, setOrderStatus] = useState<OrderStatusType>('processing');
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('paid');
+
+  // Preview Image Modal state
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
   useEffect(() => {
-    const frameId = requestAnimationFrame(() => {
+    if (order) {
       setCurrentOrder(order);
-      setAdminNote(order?.adminNote || "");
-    });
-
-    return () => cancelAnimationFrame(frameId);
-  }, [order]);
-
-  // Handle escape key to close
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    if (isOpen) {
-      document.addEventListener("keydown", handleEsc);
-      document.body.style.overflow = "hidden";
+      setCustomerName(order.customerName || '');
+      setPhone(order.phone || '');
+      setEmail(order.email || '');
+      setShippingAddress(order.shippingAddress || '');
+      setOrderStatus(order.status || 'processing');
+      setPaymentStatus(order.paymentStatus || 'paid');
     }
-    return () => {
-      document.removeEventListener("keydown", handleEsc);
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen, onClose]);
+  }, [order]);
 
   if (!isOpen || !currentOrder) return null;
 
   const items = currentOrder.items || [];
-  const uploadedImages = items.flatMap((item) =>
-    Array.isArray(item.uploadedImages) ? item.uploadedImages : [],
+  const calculatedItemsTotal = items.reduce(
+    (sum, item) => sum + (item.price || 0) * (item.quantity || 1),
+    0
   );
+  const subtotal = currentOrder.subtotal ?? (calculatedItemsTotal || currentOrder.totalValue || 0);
+  const deliveryFee = currentOrder.deliveryFee ?? 350;
+  const discount = currentOrder.discount ?? 0;
+  const totalAmount = currentOrder.totalValue ?? Math.max(0, subtotal + deliveryFee - discount);
 
-  const subtotal = items.reduce(
-    (sum, item) =>
-      sum + getProductLineTotal(item.price, item.quantity, item.name),
-    0,
-  );
-
-  const totalAmount = currentOrder.totalValue ?? subtotal;
-  const shippingCost = Math.max(0, totalAmount - subtotal);
-
-  const itemLineCount = items.length;
-  const totalUnitsCount = items.reduce(
-    (sum, item) => sum + (item.quantity || 0),
-    0,
-  );
-
-  const statusStyle = getStatusStyle(currentOrder.status);
-  const mongoOrderId = currentOrder._id || currentOrder.id;
-
-  const handleStatusSelect = async (newStatus: OrderStatusType) => {
-    setStatusMenuOpen(false);
-
-    if (newStatus === currentOrder.status) return;
-
-    if (!mongoOrderId) {
-      addToast("Order ID missing. Cannot update status.", "error");
-      return;
-    }
-
-    setSaving(true);
+  // Download all photos for a specific item
+  const handleDownloadAll = async (uploadedImages: string[], itemName: string, index: number) => {
+    if (!uploadedImages || uploadedImages.length === 0) return;
+    setDownloadingItemIndex(index);
 
     try {
-      const response = await fetch(
-        apiV1Url(`/orders/${mongoOrderId}/status`),
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status: statusToApi(newStatus),
-            adminNote: adminNote.trim() || undefined,
-          }),
-        },
-      );
+      addToast(`Starting download of ${uploadedImages.length} images for ${itemName}...`, 'info');
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.message || `Update failed: ${response.status}`);
+      for (let i = 0; i < uploadedImages.length; i++) {
+        const url = uploadedImages[i];
+        try {
+          const ext = url.split('.').pop()?.split('?')[0] || 'jpg';
+          const fileName = `${currentOrder.orderId}_${itemName.replace(/\s+/g, '_')}_Photo_${i + 1}.${ext}`;
+          // Downloaded through the backend: the browser cannot fetch the Cloudflare URL directly (CORS).
+          const res = await fetch(apiV1Url(`/orders/photos/download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(fileName)}`));
+          if (!res.ok) throw new Error('download failed');
+          const blob = await res.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+          // small delay between downloads to prevent browser blocking
+          await new Promise((r) => setTimeout(r, 300));
+        } catch {
+          window.open(url, '_blank');
+        }
       }
 
-      const rawData = await response.json();
-      const updatedOrder = mapApiOrder(rawData);
+      addToast(`Successfully downloaded photos for ${itemName}`, 'success');
+    } catch {
+      addToast('Could not download images. Please check permissions.', 'error');
+    } finally {
+      setDownloadingItemIndex(null);
+    }
+  };
 
-      setCurrentOrder(updatedOrder);
-      setAdminNote(updatedOrder.adminNote || "");
-      onUpdated?.(updatedOrder);
+  const RETENTION_DAYS = 7;
+  const hasPhotos = items.some((i) => i.uploadedImages?.length);
+  const photosExpireOn = currentOrder.deliveredAt
+    ? new Date(new Date(currentOrder.deliveredAt).getTime() + RETENTION_DAYS * 86400000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null;
 
-      addToast("Order updated successfully.", "success");
-    } catch (err) {
-      addToast(
-        err instanceof Error ? err.message : "Failed to update order status",
-        "error",
-      );
+  // Manual clean-up: removes the customer's photos from Cloudflare R2 (delivered orders only).
+  const handleDeletePhotos = async () => {
+    setDeletePhotosOpen(false);
+    setDeletingPhotos(true);
+    try {
+      const res = await fetch(apiV1Url(`/orders/${currentOrder._id || currentOrder.id}/customer-images`), { method: 'DELETE' });
+      if (!res.ok) {
+        let message = 'Could not delete the customer photos.';
+        try {
+          const j = (await res.json()) as { message?: string | string[] };
+          if (j?.message) message = Array.isArray(j.message) ? j.message.join(', ') : j.message;
+        } catch {
+          if (res.status >= 500) message = `Server is not reachable (HTTP ${res.status}). Check that the backend is running.`;
+        }
+        addToast(message, 'error');
+        return;
+      }
+      const updated: Order = {
+        ...currentOrder,
+        imagesDeletedAt: new Date().toISOString(),
+        items: (currentOrder.items ?? []).map((i) => ({ ...i, uploadedImages: [] })),
+      };
+      setCurrentOrder(updated);
+      onUpdated?.(updated);
+      addToast('Customer photos deleted from storage.', 'success');
+    } catch {
+      addToast('Could not delete the customer photos.', 'error');
+    } finally {
+      setDeletingPhotos(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const updated: Order = {
+      ...currentOrder,
+      deliveredAt:
+        orderStatus === 'delivered' && currentOrder.status !== 'delivered'
+          ? new Date().toISOString()
+          : currentOrder.deliveredAt,
+      customerName,
+      phone,
+      email,
+      shippingAddress,
+      status: orderStatus,
+      paymentStatus,
+    };
+
+    try {
+      // Save to the database. Empty optional fields are left out so they are not validated/overwritten.
+      const res = await fetch(apiV1Url(`/orders/${currentOrder._id || currentOrder.id}/status`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: orderStatus.toUpperCase(),
+          paymentStatus,
+          ...(customerName.trim() ? { customerName: customerName.trim() } : {}),
+          ...(phone.trim() ? { phone: phone.trim() } : {}),
+          ...(email.trim() ? { email: email.trim() } : {}),
+          ...(shippingAddress.trim() ? { shippingAddress: shippingAddress.trim() } : {}),
+        }),
+      });
+      if (!res.ok) {
+        let message = 'Could not save order updates.';
+        try {
+          const j = (await res.json()) as { message?: string | string[] };
+          if (j?.message) message = Array.isArray(j.message) ? j.message.join(', ') : j.message;
+        } catch {
+          // Not a JSON error - usually the backend is not running (proxy answers HTTP 500).
+          if (res.status >= 500) message = `Server is not reachable (HTTP ${res.status}). Check that the backend is running.`;
+        }
+        addToast(message, 'error');
+        return;
+      }
+
+      const stockMsg = await syncOrderStock(currentOrder, orderStatus).catch(() => null);
+
+      setCurrentOrder(updated);
+      onUpdated?.(updated);
+      addToast(`Order ${currentOrder.orderId} changes saved successfully.${stockMsg ? ' ' + stockMsg : ''}`, 'success');
+    } catch {
+      addToast('Could not save order updates.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDownloadImages = async (
-    imageUrls: string[],
-    itemName: string,
-    itemIndex: number,
-  ) => {
-    setDownloadingProduct(itemIndex);
-
-    const orderName = currentOrder.orderId.replace(/[^a-z0-9]+/gi, "-");
-    const productName = itemName.replace(/[^a-z0-9]+/gi, "-");
-
-    try {
-      for (const [imageIndex, imageUrl] of imageUrls.entries()) {
-        const response = await fetch(
-          `/api/download-image?url=${encodeURIComponent(imageUrl)}`,
-        );
-        if (!response.ok) throw new Error("Image download failed");
-
-        const blob = await response.blob();
-        const extension = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
-        const downloadUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = downloadUrl;
-        link.download = `${orderName}-${productName}-image-${imageIndex + 1}.${extension}`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(downloadUrl);
-      }
-      addToast("Product images downloaded successfully.", "success");
-    } catch {
-      addToast("Could not download images. Please try again.", "error");
-    } finally {
-      setDownloadingProduct(null);
-    }
-  };
-
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-[200] bg-black/45 backdrop-blur-sm"
-        onClick={onClose}
-        role="presentation"
-      />
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs" onClick={onClose}>
+        <div onClick={(e) => e.stopPropagation()} className="flex h-full max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-[#F8FAFC] shadow-2xl">
+          {/* Header */}
+          <div className="flex shrink-0 items-center justify-between border-b border-[#E2E8F0] bg-white px-6 py-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-[12px] font-bold tracking-tight text-[#0F172A]" style={{ fontSize: '12px' }}>
+                Order Details - <span className="font-mono text-[#2563EB]" style={{ fontSize: '12px' }}>{currentOrder.orderId}</span>
+              </h2>
 
-      {/* Modal */}
-      <div className="fixed inset-0 z-[200] flex items-center justify-center px-4 py-6 sm:px-6">
-        <div
-          className="relative flex w-full max-w-[680px] max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-[0px_20px_40px_rgba(0,0,0,0.18)]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Fixed Header */}
-          <div className="shrink-0 border-b border-[#EEF1F5] px-5 py-4 sm:px-8 sm:py-5">
-            <div className="flex items-start justify-between gap-3">
-              {/* Order ID */}
-              <h1 className="min-w-0 flex-1 break-words pt-1 text-[24px] font-bold leading-6 text-[#1A1C1F] sm:text-[26px] sm:leading-7">
-                Order #{currentOrder.orderId}
-              </h1>
-
-              {/* Close */}
-              {/* <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#64748B] transition hover:bg-slate-100 hover:text-[#1A1C1F]"
-              >
-                <X size={19} strokeWidth={1.8} />
-              </button> */}
-            </div>
-
-            {/* Status row */}
-            <div className="mt-3 flex items-center gap-2">
-              <span
-                className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 text-[13px] font-bold capitalize ring-1 ring-inset sm:text-[15px]"
-                style={{
-                  background: statusStyle.bg,
-                  color: statusStyle.text,
-                  boxShadow: `0 0 0 1px ${statusStyle.text}20`,
-                }}
-              >
-                {saving ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <>
-                    {currentOrder.status}
-                    <Check size={12} strokeWidth={2.8} />
-                  </>
-                )}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-[12px] font-bold text-purple-700" style={{ fontSize: '12px' }}>
+                <Sparkles size={13} className="text-purple-600" />
+                All Photos Received
               </span>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setStatusMenuOpen((v) => !v)}
-                  disabled={saving}
-                  className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-md bg-[#002B73] px-3.5 text-[13px] font-semibold leading-none text-white transition hover:bg-[#001F52] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? "Updating..." : "Update Status"}
-                  <ChevronDown size={12} strokeWidth={2.5} />
-                </button>
-
-                {statusMenuOpen && (
-                  <>
-                    {/* click-away layer */}
-                    <div
-                      className="fixed inset-0 z-20"
-                      onClick={() => setStatusMenuOpen(false)}
-                      role="presentation"
-                    />
-                    <div className="absolute left-0 top-full z-30 mt-1.5 w-40 overflow-hidden rounded-lg border border-[#E1E5EE] bg-white shadow-lg">
-                      {STATUS_OPTIONS.map((s) => {
-                        const isDisabled =
-                          STATUS_RANK[s] < STATUS_RANK[currentOrder.status];
-
-                        return (
-                          <button
-                            key={s}
-                            type="button"
-                            disabled={isDisabled}
-                            title={
-                              isDisabled
-                                ? "Cannot move order status backward"
-                                : undefined
-                            }
-                            onClick={() => handleStatusSelect(s)}
-                            className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium capitalize ${
-                              isDisabled
-                                ? "cursor-not-allowed text-[#B0B4BE]"
-                                : "text-[#1A1C1F] hover:bg-slate-50"
-                            }`}
-                          >
-                            {s}
-                            {currentOrder.status === s && (
-                              <Check size={13} className="text-[#002B73]" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
 
-            <p className="mt-2.5 text-xs text-[#8A8D99] sm:text-sm">
-              Order placed on {formatPlacedOn(currentOrder.createdAt)}
-            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex size-9 items-center justify-center rounded-xl border border-[#E2E8F0] text-[#64748B] transition hover:bg-slate-100 hover:text-[#0F172A]"
+              aria-label="Close modal"
+            >
+              <X size={18} />
+            </button>
           </div>
 
-          {/* Scrollable Content */}
-          <div className="overflow-y-auto px-5 pb-6 sm:px-8 sm:pb-8">
-            <div className="pt-6 space-y-6">
-              {/* ORDER ITEMS */}
-              <div>
-                <h3 className="mb-3 flex items-center gap-2 text-[12px] font-extrabold tracking-[1.5px] text-[#002B73] sm:text-sm">
-                  <ShoppingBag size={15} strokeWidth={2.2} />
-                  ORDER ITEMS
-                </h3>
+          {/* Modal Scrollable Body */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+            {/* Top 2 Columns: Customer Info & Order Details */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* LEFT COLUMN: Customer Information */}
+              <div className="flex flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
+                <div>
+                  <h3 className="mb-4 text-[12px] font-bold uppercase tracking-wider text-[#64748B]" style={{ fontSize: '12px' }}>
+                    Customer Information
+                  </h3>
 
-                <div className="overflow-hidden rounded-xl border border-[#E1E5EE]">
-                  <div
-                    className="grid grid-cols-[1fr_60px_100px] gap-2 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wide text-[#8A8D99] sm:text-[11px]"
-                    style={{ background: "#F7F8FB" }}
-                  >
-                    <span>Product</span>
-                    <span className="text-center">Qty</span>
-                    <span className="text-right">Total</span>
+                  <div className="space-y-3.5">
+                    {/* Delivery Name */}
+                    <div>
+                      <label className="text-[12px] font-bold uppercase text-[#64748B]" style={{ fontSize: '12px' }}>
+                        Delivery Name
+                      </label>
+                      <input
+                        type="text"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                        style={{ fontSize: '12px' }}
+                      />
+                    </div>
+
+                    {/* Phone Number & Email */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="text-[12px] font-bold uppercase text-[#64748B]" style={{ fontSize: '12px' }}>
+                          Phone Number
+                        </label>
+                        <input
+                          type="text"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                          style={{ fontSize: '12px' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[12px] font-bold uppercase text-[#64748B]" style={{ fontSize: '12px' }}>
+                          Email Address
+                        </label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                          style={{ fontSize: '12px' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Delivery Address */}
+                    <div>
+                      <label className="text-[12px] font-bold uppercase text-[#64748B]" style={{ fontSize: '12px' }}>
+                        Delivery Address
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={shippingAddress}
+                        onChange={(e) => setShippingAddress(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 p-2.5 text-[12px] font-medium text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                        style={{ fontSize: '12px' }}
+                      />
+                    </div>
                   </div>
+                </div>
 
-                  <div className="divide-y divide-[#EEF1F5]">
-                    {items.map((item, index) => (
+                {/* Download Shipping Label Button */}
+                <div className="mt-5 border-t border-[#F1F5F9] pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShippingLabelOpen(true)}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-4 text-[12px] font-bold text-[#1E293B] shadow-2xs transition hover:bg-slate-50 active:scale-[0.99]"
+                    style={{ fontSize: '12px' }}
+                  >
+                    <Download size={15} className="text-[#2563EB]" />
+                    <span style={{ fontSize: '12px' }}>Download Shipping Label</span>
+                  </button>
+                </div>
+              </div>
 
-                      <div
-                        key={`${item.productId || item.name}-${index}`}
-                        className="px-4 py-3"
-                      >
+              {/* RIGHT COLUMN: Order & Payment Details */}
+              <div className="flex flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
+                <div>
+                  <h3 className="mb-4 text-[12px] font-bold uppercase tracking-wider text-[#64748B]" style={{ fontSize: '12px' }}>
+                    Order & Payment Details
+                  </h3>
 
-                        <div className="grid grid-cols-[1fr_60px_100px] items-center gap-2">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                  {/* Items List */}
+                  <div className="divide-y divide-[#F1F5F9] overflow-hidden rounded-xl border border-[#E2E8F0] bg-slate-50/30">
+                    {items.length === 0 ? (
+                      <p className="p-4 text-center text-[12px] text-[#94A3B8]" style={{ fontSize: '12px' }}>
+                        No items attached to this order.
+                      </p>
+                    ) : (
+                      items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
                               <Image
-                                src={
-                                  item.primaryImage ||
-                                  item.image ||
-                                  "/home-product-1.png"
-                                }
+                                src={item.primaryImage || item.image || '/product-1.png'}
                                 alt={item.name}
-                                width={44}
-                                height={44}
-                                className="h-full w-full object-cover"
+                                fill
+                                className="object-cover"
                               />
                             </div>
-                            <div className="min-w-0">
-                              <p className="truncate text-xs font-bold text-[#1A1C1F] sm:text-sm">
-                                {item.name}
-                              </p>
-                              <p className="truncate text-[10px] text-[#8A8D99] sm:text-xs">
-                                SKU: {item.sku || "-"}
+                            <div>
+                              <p className="text-[12px] font-bold text-[#0F172A]" style={{ fontSize: '12px' }}>{item.name}</p>
+                              <p className="text-[12px] text-[#64748B]" style={{ fontSize: '12px' }}>
+                                SKU: {item.sku || 'MG-01'} · Qty: {item.quantity}
                               </p>
                             </div>
                           </div>
 
-                          <span className="text-center text-xs font-semibold text-[#1A1C1F] sm:text-sm">
-                            {item.quantity}
-                          </span>
-
-                          <span className="text-right text-xs font-bold text-[#1A1C1F] sm:text-sm">
-                            Rs{" "}
-                            {getProductLineTotal(
-                              item.price,
-                              item.quantity,
-                              item.name,
-                            ).toFixed(2)}
+                          <span className="text-[12px] font-bold text-[#0F172A]" style={{ fontSize: '12px' }}>
+                            LKR {(item.price * item.quantity).toLocaleString()}
                           </span>
                         </div>
-
-                        {/* Customer-uploaded images for this item */}
-                        {Array.isArray(item.uploadedImages) &&
-                          item.uploadedImages.length > 0 && (
-                            <div className="mt-2.5 flex flex-wrap items-start gap-2 pl-14">
-                              <span className="mt-1.5 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#8A8D99]">
-                                Uploaded:
-                              </span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {item.uploadedImages.map((imgUrl, imgIndex) => (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setPreviewImageIndex(
-                                        uploadedImages.indexOf(imgUrl),
-                                      )
-                                    }
-                                    key={imgIndex}
-                                    className="block h-9 w-9 shrink-0 overflow-hidden rounded-md border border-[#E1E5EE] bg-slate-100 transition hover:ring-2 hover:ring-[#002B73]/40"
-                                    aria-label={`Preview ${item.name} uploaded image ${imgIndex + 1}`}
-                                  >
-                                    <Image
-                                      src={imgUrl}
-                                      alt={`${item.name} uploaded image ${imgIndex + 1}`}
-                                      width={36}
-                                      height={36}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  </button>
-                                ))}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDownloadImages(
-                                    item.uploadedImages!,
-                                    item.name,
-                                    index,
-                                  )
-                                }
-                                disabled={downloadingProduct === index}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#002B73] px-2.5 text-[11px] font-semibold text-white transition hover:bg-[#001F52] disabled:cursor-not-allowed disabled:opacity-60"
-                                title="Download original images"
-                              >
-                                {downloadingProduct === index ? (
-                                  <Loader2 size={13} className="animate-spin" />
-                                ) : (
-                                  <Download size={13} />
-                                )}
-                                {downloadingProduct === index
-                                  ? "Downloading..."
-                                  : "Download"}
-                              </button>
-                            </div>
-                          )}
-                      </div>
-                    ))}
-
-                    {!items.length && (
-                      <div className="px-4 py-6 text-center text-xs font-semibold text-[#8A8D99]">
-                        No item details saved for this order.
-                      </div>
+                      ))
                     )}
                   </div>
 
-                  {items.length > 0 && (
-                    <div
-                      className="flex items-center justify-between px-4 py-2.5 text-xs font-semibold sm:text-sm"
-                      style={{ background: "#EEF3FF", color: "#002B73" }}
-                    >
-                      <span>
-                        {itemLineCount} item{itemLineCount !== 1 ? "s" : ""} in
-                        this order
-                      </span>
-                      <span>Total Items: {totalUnitsCount}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* FINANCIAL SUMMARY */}
-              <div>
-                <h3 className="mb-3 flex items-center gap-2 text-[12px] font-extrabold tracking-[1.5px] text-[#002B73] sm:text-sm">
-                  <List size={15} strokeWidth={2.2} />
-                  FINANCIAL SUMMARY
-                </h3>
-
-                <div className="rounded-xl border border-[#E1E5EE] px-4 py-4 sm:px-5 sm:py-5">
-                  <div className="flex items-center justify-between py-1.5 text-xs sm:text-sm">
-                    <span className="text-[#64748B]">Subtotal</span>
-                    <span className="font-semibold text-[#1A1C1F]">
-                      Rs {subtotal.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1.5 text-xs sm:text-sm">
-                    <span className="text-[#64748B]">Shipping Cost</span>
-                    <span className="font-semibold text-[#1A1C1F]">
-                      Rs {shippingCost.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-between border-t border-[#EEF1F5] pt-3">
-                    <span className="text-sm font-bold text-[#1A1C1F] sm:text-base">
-                      Total Amount
-                    </span>
-                    <span className="text-lg font-extrabold text-[#002B73] sm:text-xl">
-                      Rs {totalAmount.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* SHIPPING DETAILS */}
-              <div>
-                <h3 className="mb-3 flex items-center gap-2 text-[12px] font-extrabold tracking-[1.5px] text-[#002B73] sm:text-sm">
-                  <Truck size={15} strokeWidth={2.2} />
-                  SHIPPING DETAILS
-                </h3>
-
-                <div className="rounded-xl border border-[#E1E5EE] px-4 py-4 sm:px-5 sm:py-5">
-                  <p className="text-sm font-bold text-[#1A1C1F] sm:text-base">
-                    {currentOrder.customerName || "-"}
-                  </p>
-
-                  <p className="mt-1 text-xs font-normal text-[#6B7280]">
-                    {normalizeCustomerId(currentOrder.customerId) || "-"}
-                  </p>
-
-                  <div className="mt-3 space-y-2.5 border-t border-[#EEF1F5] pt-3">
-                    <div className="flex items-center gap-2.5 text-xs text-[#434652] sm:text-sm">
-                      <Mail size={15} className="shrink-0 text-[#8A8D99]" />
-                      <span className="truncate">
-                        {currentOrder.email || "-"}
+                  {/* Financial Breakdown */}
+                  <div className="mt-4 space-y-1.5 border-t border-[#F1F5F9] pt-3 text-[12px]" style={{ fontSize: '12px' }}>
+                    <div className="flex justify-between text-[#64748B]" style={{ fontSize: '12px' }}>
+                      <span style={{ fontSize: '12px' }}>Subtotal</span>
+                      <span className="font-semibold text-[#0F172A]" style={{ fontSize: '12px' }}>
+                        LKR {subtotal.toLocaleString()}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2.5 text-xs text-[#434652] sm:text-sm">
-                      <Phone size={15} className="shrink-0 text-[#8A8D99]" />
-                      <span>{currentOrder.phone || "-"}</span>
+                    <div className="flex justify-between text-[#64748B]" style={{ fontSize: '12px' }}>
+                      <span style={{ fontSize: '12px' }}>Delivery Charge</span>
+                      <span className="font-semibold text-[#0F172A]" style={{ fontSize: '12px' }}>
+                        LKR {deliveryFee.toLocaleString()}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2.5 text-xs text-[#434652] sm:text-sm">
-                      <MapPin
-                        size={15}
-                        className="mt-0.5 shrink-0 text-[#8A8D99]"
+                    {discount > 0 && (
+                      <div className="flex justify-between text-rose-600" style={{ fontSize: '12px' }}>
+                        <span style={{ fontSize: '12px' }}>Discount</span>
+                        <span style={{ fontSize: '12px' }}>- LKR {discount.toLocaleString()}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between border-t border-[#E2E8F0] pt-2 text-[12px] font-bold text-[#0F172A]" style={{ fontSize: '12px' }}>
+                      <span style={{ fontSize: '12px' }}>Total</span>
+                      <span className="text-[#2563EB]" style={{ fontSize: '12px' }}>
+                        LKR {totalAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Dropdowns */}
+                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-[#F1F5F9] pt-4">
+                  {/* Order Status */}
+                  <div>
+                    <label className="text-[12px] font-bold uppercase text-[#64748B]" style={{ fontSize: '12px' }}>
+                      Order Status
+                    </label>
+                    <div className="relative mt-1">
+                      <select
+                        value={orderStatus}
+                        onChange={(e) => setOrderStatus(e.target.value as OrderStatusType)}
+                        className="h-10 w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[12px] font-bold text-[#0F172A] capitalize focus:border-[#2563EB] focus:outline-none"
+                        style={{ fontSize: '12px' }}
+                      >
+                        {ORDER_STATUSES.map((st) => (
+                          <option key={st.value} value={st.value} style={{ fontSize: '12px' }}>
+                            {st.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        size={14}
+                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B]"
                       />
-                      <span className="break-words">
-                        {currentOrder.shippingAddress || "-"}
-                      </span>
+                    </div>
+                  </div>
+
+                  {/* Payment Status */}
+                  <div>
+                    <label className="text-[12px] font-bold uppercase text-[#64748B]" style={{ fontSize: '12px' }}>
+                      Payment Status
+                    </label>
+                    <div className="relative mt-1">
+                      <select
+                        value={paymentStatus}
+                        onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus)}
+                        className="h-10 w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[12px] font-bold text-[#0F172A] capitalize focus:border-[#2563EB] focus:outline-none"
+                        style={{ fontSize: '12px' }}
+                      >
+                        {PAYMENT_STATUSES.map((pst) => (
+                          <option key={pst.value} value={pst.value} style={{ fontSize: '12px' }}>
+                            {pst.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        size={14}
+                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B]"
+                      />
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* BOTTOM SECTION: Customer Uploaded Photos List */}
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-[12px] font-bold text-[#0F172A]" style={{ fontSize: '12px' }}>
+                    Customer Uploaded Photos List
+                  </h3>
+                  <p className="text-[12px] text-[#64748B]" style={{ fontSize: '12px' }}>
+                    Photos uploaded by the customer for customized magnets & frames.
+                  </p>
+                  {currentOrder.status === 'delivered' && hasPhotos && (
+                    <p className="mt-0.5 text-[12px] font-semibold text-amber-600" style={{ fontSize: '12px' }}>
+                      {photosExpireOn
+                        ? `These photos are deleted automatically on ${photosExpireOn} (${RETENTION_DAYS} days after delivery).`
+                        : `These photos are deleted automatically ${RETENTION_DAYS} days after delivery.`}
+                    </p>
+                  )}
+                </div>
+                {currentOrder.status === 'delivered' && hasPhotos && (
+                  <button
+                    type="button"
+                    disabled={deletingPhotos}
+                    onClick={() => setDeletePhotosOpen(true)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-[12px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                    style={{ fontSize: '12px' }}
+                  >
+                    {deletingPhotos ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    <span style={{ fontSize: '12px' }}>{deletingPhotos ? 'Deleting...' : 'Delete photos now'}</span>
+                  </button>
+                )}
+              </div>
+
+              {items.length === 0 || !items.some((i) => i.uploadedImages?.length) ? (
+                <div className="rounded-xl border border-dashed border-[#CBD5E1] p-8 text-center">
+                  <p className="text-[12px] text-[#94A3B8]" style={{ fontSize: '12px' }}>
+                    {currentOrder.imagesDeletedAt
+                      ? `Customer photos were deleted from storage on ${new Date(currentOrder.imagesDeletedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}.`
+                      : 'No custom photos were uploaded for this order.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {items.map((item, itemIdx) => {
+                    const photos = item.uploadedImages || [];
+                    if (photos.length === 0) return null;
+
+                    const isDownloadingThis = downloadingItemIndex === itemIdx;
+
+                    return (
+                      <div
+                        key={itemIdx}
+                        className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4"
+                      >
+                        {/* Product sub-header + Download All button */}
+                        <div className="mb-3.5 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-[#2563EB]" />
+                            <h4 className="text-[12px] font-bold uppercase tracking-wide text-[#0F172A]" style={{ fontSize: '12px' }}>
+                              {item.name}
+                            </h4>
+                            <span className="rounded-md bg-slate-200 px-2 py-0.5 text-[12px] font-bold text-[#475569]" style={{ fontSize: '12px' }}>
+                              {photos.length} photos
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={isDownloadingThis}
+                            onClick={() => handleDownloadAll(photos, item.name, itemIdx)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#2563EB] px-3 text-[12px] font-bold text-white shadow-2xs transition hover:bg-[#1D4ED8] disabled:opacity-60"
+                            style={{ fontSize: '12px' }}
+                          >
+                            {isDownloadingThis ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Download size={13} />
+                            )}
+                            <span style={{ fontSize: '12px' }}>{isDownloadingThis ? 'Downloading...' : 'Download All'}</span>
+                          </button>
+                        </div>
+
+                        {/* Photos Grid */}
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+                          {photos.map((photoUrl, photoIdx) => (
+                            <div
+                              key={photoIdx}
+                              onClick={() => setPreviewImageUrl(photoUrl)}
+                              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#CBD5E1] bg-white shadow-2xs transition hover:shadow-md hover:ring-2 hover:ring-[#2563EB]"
+                            >
+                              <div className="relative aspect-square w-full">
+                                <Image
+                                  src={photoUrl}
+                                  alt={`Customer photo ${photoIdx + 1}`}
+                                  fill
+                                  sizes="(max-width: 768px) 33vw, 16vw"
+                                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                />
+                                <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+                              </div>
+                              <div className="bg-white p-1.5 text-center border-t border-[#F1F5F9]">
+                                <span className="text-[12px] font-bold text-[#475569]" style={{ fontSize: '12px' }}>
+                                  Photo {photoIdx + 1}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Fixed Footer */}
-          <div className="shrink-0 flex justify-end border-t border-[#EEF1F5] px-5 py-4 sm:px-8">
+          {/* Modal Footer */}
+          <div className="flex shrink-0 items-center justify-between border-t border-[#E2E8F0] bg-white px-6 py-4">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition"
-              style={{ background: "#BC0000" }}
+              onClick={() => {
+                onDeleteRequest?.(currentOrder);
+                onClose();
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-4 py-2 text-[12px] font-bold text-rose-600 transition hover:bg-rose-50"
+              style={{ fontSize: '12px' }}
             >
-              Close
+              <Trash2 size={15} />
+              <span style={{ fontSize: '12px' }}>Delete Order</span>
             </button>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-[#E2E8F0] px-4 py-2 text-[12px] font-bold text-[#64748B] hover:bg-slate-100"
+                style={{ fontSize: '12px' }}
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleSave}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#2563EB] px-5 py-2 text-[12px] font-bold text-white shadow-xs transition hover:bg-[#1D4ED8] disabled:opacity-60"
+                style={{ fontSize: '12px' }}
+              >
+                {saving ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
+                <span style={{ fontSize: '12px' }}>{saving ? 'Saving...' : 'Save'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {previewImageIndex !== null && uploadedImages[previewImageIndex] && (
+      <ConfirmModal
+        open={deletePhotosOpen}
+        title="Delete customer photos?"
+        message={<>The photos the customer uploaded for order <b>{currentOrder.orderId}</b> will be permanently removed from storage. This cannot be undone.</>}
+        confirmLabel="Delete photos"
+        onCancel={() => setDeletePhotosOpen(false)}
+        onConfirm={handleDeletePhotos}
+      />
+
+      {/* Shipping Label Printable Preview Modal */}
+      <ShippingLabelModal
+        order={currentOrder}
+        isOpen={shippingLabelOpen}
+        onClose={() => setShippingLabelOpen(false)}
+      />
+
+      {/* Single Photo High-Res Preview Modal */}
+      {previewImageUrl && (
         <div
-          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/75 p-4"
-          onClick={() => setPreviewImageIndex(null)}
-          role="presentation"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewImageUrl(null)}
         >
           <div
-            className="relative flex max-h-[90vh] max-w-[90vw] items-center gap-3 overflow-hidden rounded-lg bg-white p-2 shadow-2xl"
+            className="relative max-h-[85vh] max-w-[85vw] overflow-hidden rounded-2xl bg-white p-2 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
-              onClick={() =>
-                setPreviewImageIndex(
-                  (previewImageIndex - 1 + uploadedImages.length) %
-                    uploadedImages.length,
-                )
-              }
-              disabled={uploadedImages.length < 2}
-              aria-label="Previous uploaded image"
-              className="absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => setPreviewImageUrl(null)}
+              className="absolute right-3 top-3 z-10 flex size-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black"
             >
-              <ChevronLeft size={22} />
+              <X size={18} />
             </button>
-            <Image
-              src={uploadedImages[previewImageIndex]}
-              alt="Uploaded image preview"
-              width={1200}
-              height={1200}
-              className="max-h-[85vh] max-w-[85vw] object-contain"
-            />
-            <button
-              type="button"
-              onClick={() =>
-                setPreviewImageIndex(
-                  (previewImageIndex + 1) % uploadedImages.length,
-                )
-              }
-              disabled={uploadedImages.length < 2}
-              aria-label="Next uploaded image"
-              className="absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronRight size={22} />
-            </button>
+
+            <div className="relative h-[70vh] w-[70vw] max-w-[700px]">
+              <Image
+                src={previewImageUrl}
+                alt="Enlarged customer photo"
+                fill
+                className="object-contain"
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3 border-t border-slate-100">
+              <span className="text-xs font-semibold text-slate-600">High-Resolution Customer Upload</span>
+              <a
+                href={previewImageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-bold text-[#2563EB] hover:underline"
+              >
+                <ExternalLink size={13} />
+                Open original
+              </a>
+            </div>
           </div>
         </div>
       )}

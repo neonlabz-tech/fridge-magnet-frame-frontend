@@ -1,147 +1,108 @@
-"use client";
+'use client';
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useCustomers } from "@/hooks/useCustomers";
-import AddCustomerModal from "./AddCustomerModal";
-
-type CustomerRow = {
-  id: string;
-  recordId: string;
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-  initials: string;
-  isActive: boolean;
-  source?: string;
-};
-
-const getInitials = (name: string) =>
-  name
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-const normalizeCustomerId = (value: unknown) =>
-  String(value ?? "").replace(/^#+/, "");
-
-const normalizeCustomer = (customer: any): CustomerRow => {
-  const name =
-    customer.customerName ||
-    customer.name ||
-    `${customer.firstName ?? ""} ${customer.lastName ?? ""}`.trim() ||
-    "Unknown";
-
-  return {
-    id: normalizeCustomerId(
-      customer.customerId ||
-        customer.id ||
-        customer._id ||
-        customer.recordId ||
-        "",
-    ),
-    recordId: String(customer._id || customer.recordId || customer.id || ""),
-    name,
-    email: customer.emailAddress || customer.email || "Not provided",
-    phone: customer.phoneNumber || customer.phone || "Not provided",
-    address: customer.customerAddress || customer.address || "Not provided",
-    initials: getInitials(name),
-    isActive: customer.isActive ?? customer.status !== "inactive",
-    source: customer.source,
-  };
-};
-
-const extractCustomers = (data: any): any[] => {
-  if (Array.isArray(data?.data?.customers)) {
-    return data.data.customers;
-  }
-
-  if (Array.isArray(data?.data?.items)) {
-    return data.data.items;
-  }
-
-  if (Array.isArray(data?.data)) {
-    return data.data;
-  }
-
-  if (Array.isArray(data?.customers)) {
-    return data.customers;
-  }
-
-  if (Array.isArray(data?.items)) {
-    return data.items;
-  }
-
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  return [];
-};
+import React, { useEffect, useMemo, useState } from 'react';
+import { Skeleton } from '@/components/dashboard/shared/Skeleton';
+import {
+  Search,
+  Download,
+  Plus,
+  Eye,
+  Pencil,
+  Phone,
+  Mail,
+  MapPin,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+} from 'lucide-react';
+import { useCustomers } from '@/hooks/useCustomers';
+import AddCustomerModal from './AddCustomerModal';
+import ViewCustomerModal from './ViewCustomerModal';
+import DeactivateCustomerModal from './DeactivateCustomerModal';
+import {
+  type CustomerRow,
+  avatarStyle,
+  displayId,
+  extractCustomers,
+  normalizeCustomer,
+} from './CustomerShared';
 
 type CustomerTableProps = {
   onCustomersChanged?: () => void;
 };
 
-const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
-  const {
-    customers,
-    stats,
-    loading,
-    error,
-    page,
-    total,
-    totalPages,
-    limit,
-    goToPage,
-    refresh,
-  } = useCustomers();
+type StatusFilter = 'all' | 'Enable' | 'Disable';
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
+const getPageNumbers = (current: number, total: number): (number | 'ellipsis')[] => {
+  if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
+  if (current <= 3) return [1, 2, 3, 'ellipsis', total];
+  if (current >= total - 2) return [1, 'ellipsis', total - 2, total - 1, total];
+  return [1, 'ellipsis', current, 'ellipsis', total];
+};
 
-  const [editingCustomer, setEditingCustomer] = useState<CustomerRow | null>(
-    null,
+function PageBtn({
+  children,
+  active = false,
+  disabled = false,
+  onClick,
+  label,
+}: {
+  children: React.ReactNode;
+  active?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
+      style={{ fontSize: '12px' }}
+      className={`flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-xs font-semibold transition ${
+        active
+          ? 'bg-[#2563EB] text-white shadow-xs'
+          : disabled
+            ? 'cursor-not-allowed text-[#CBD5E1]'
+            : 'text-[#475569] hover:bg-slate-100'
+      }`}
+    >
+      {children}
+    </button>
   );
+}
 
+const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
+  const { customers, loading, error, page, total, totalPages, limit, goToPage, refresh } =
+    useCustomers();
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerRow | null>(null);
+  const [viewingCustomer, setViewingCustomer] = useState<CustomerRow | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<CustomerRow | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
-
   const [statusError, setStatusError] = useState<string | null>(null);
-
-  const [showFilter, setShowFilter] = useState(false);
-
-  const [searchText, setSearchText] = useState("");
-
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "Enable" | "Disable"
-  >("all");
-
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [allCustomers, setAllCustomers] = useState<CustomerRow[]>([]);
-
   const [allCustomersLoading, setAllCustomersLoading] = useState(false);
 
   const currentPageCustomers = useMemo(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => customers.map((customer: any) => normalizeCustomer(customer)),
-    [customers],
+    [customers]
   );
 
   const fetchAllCustomers = async () => {
     setAllCustomersLoading(true);
-
     try {
-      const res = await fetch("/api/v1/customers?page=1&limit=10000");
-
-      if (!res.ok) {
-        throw new Error("Unable to load all customers");
-      }
-
+      const res = await fetch('/api/v1/customers?page=1&limit=10000');
+      if (!res.ok) throw new Error('Unable to load all customers');
       const data = await res.json();
-
       const list = extractCustomers(data).map(normalizeCustomer);
-
-      setAllCustomers(list);
+      setAllCustomers(list.length ? list : currentPageCustomers);
     } catch {
       setAllCustomers(currentPageCustomers);
     } finally {
@@ -149,570 +110,407 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
     }
   };
 
+  // The full list is only needed while searching/filtering (or exporting) – skip the extra request otherwise.
+  const needsAll = searchText.trim() !== '' || statusFilter !== 'all';
   useEffect(() => {
-    fetchAllCustomers();
-  }, [total, customers.length]);
+    if (needsAll) void fetchAllCustomers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsAll, total, customers.length]);
 
-  const isFiltering = searchText.trim() !== "" || statusFilter !== "all";
+  const isFiltering = searchText.trim() !== '' || statusFilter !== 'all';
 
   const filterCustomers = (list: CustomerRow[]) => {
     const keyword = searchText.trim().toLowerCase();
-
-    return list.filter((customer) => {
+    return list.filter((c) => {
       const matchesSearch =
-        keyword === "" ||
-        String(customer.id ?? "")
-          .toLowerCase()
-          .includes(keyword) ||
-        String(customer.name ?? "")
-          .toLowerCase()
-          .includes(keyword) ||
-        String(customer.email ?? "")
-          .toLowerCase()
-          .includes(keyword) ||
-        String(customer.phone ?? "")
-          .toLowerCase()
-          .includes(keyword) ||
-        String(customer.address ?? "")
-          .toLowerCase()
-          .includes(keyword);
-
+        keyword === '' ||
+        [c.id, c.name, c.email, c.phone, c.address].some((v) =>
+          String(v ?? '')
+            .toLowerCase()
+            .includes(keyword)
+        );
       const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "Enable" && customer.isActive) ||
-        (statusFilter === "Disable" && !customer.isActive);
-
+        statusFilter === 'all' ||
+        (statusFilter === 'Enable' && c.isActive) ||
+        (statusFilter === 'Disable' && !c.isActive);
       return matchesSearch && matchesStatus;
     });
   };
 
   const filteredAllCustomers = useMemo(() => {
-    const source =
-      allCustomers.length > 0 ? allCustomers : currentPageCustomers;
-
+    const source = allCustomers.length > 0 ? allCustomers : currentPageCustomers;
     return filterCustomers(source);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allCustomers, currentPageCustomers, searchText, statusFilter]);
 
-  const tableCustomers = isFiltering
-    ? filteredAllCustomers
-    : currentPageCustomers;
-
-  const escapeCsv = (value: unknown) => {
-    const text = String(value ?? "");
-
-    return `"${text.replace(/"/g, '""')}"`;
-  };
-
-  const downloadCustomers = filteredAllCustomers;
+  const tableCustomers = isFiltering ? filteredAllCustomers : currentPageCustomers;
 
   const handleDownload = async () => {
-    if (allCustomers.length === 0) {
-      await fetchAllCustomers();
-    }
+    if (allCustomers.length === 0) await fetchAllCustomers();
+    const rows = filteredAllCustomers;
+    if (rows.length === 0) return;
 
-    const rowsToDownload =
-      downloadCustomers.length > 0
-        ? downloadCustomers
-        : allCustomers.length > 0
-          ? filterCustomers(allCustomers)
-          : filterCustomers(currentPageCustomers);
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [
+      ['Customer ID', 'Customer Name', 'Email Address', 'Phone Number', 'Customer Address', 'Status'],
+      ...rows.map((c) => [c.id, c.name, c.email, c.phone, c.address, c.isActive ? 'Enable' : 'Disable']),
+    ]
+      .map((row) => row.map(esc).join(','))
+      .join('\n');
 
-    if (rowsToDownload.length === 0) {
-      return;
-    }
-
-    const header = [
-      "Customer ID",
-      "Customer Name",
-      "Email Address",
-      "Phone Number",
-      "Customer Address",
-      "Status",
-    ];
-
-    const rows = rowsToDownload.map((customer) => [
-      customer.id,
-      customer.name,
-      customer.email,
-      customer.phone,
-      customer.address,
-      customer.isActive ? "Enable" : "Disable",
-    ]);
-
-    const csvContent = [header, ...rows]
-      .map((row) => row.map(escapeCsv).join(","))
-      .join("\n");
-
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
     link.href = url;
-    link.download = "customers.csv";
-
+    link.download = 'customers.csv';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
     URL.revokeObjectURL(url);
   };
 
-  const from = total === 0 ? 0 : (page - 1) * limit + 1;
-
-  const to = Math.min(page * limit, total);
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingCustomer(null);
-  };
-
-  const handleEdit = (customer: CustomerRow) => {
-    setEditingCustomer(customer);
-    setIsModalOpen(true);
-  };
-
-  const handleStatusChange = async (customer: CustomerRow) => {
+  const changeStatus = async (customer: CustomerRow) => {
     setUpdatingStatusId(customer.id);
     setStatusError(null);
-
     try {
       const res = await fetch(`/api/v1/customers/${customer.recordId}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          isActive: !customer.isActive,
-          source: customer.source,
-        }),
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !customer.isActive, source: customer.source }),
       });
-
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-
         throw new Error(data?.message || `Server error: ${res.status}`);
       }
-
       await refresh();
       await fetchAllCustomers();
       onCustomersChanged?.();
+      setDeactivateTarget(null);
     } catch (err) {
-      setStatusError(
-        err instanceof Error ? err.message : "Unable to update customer status",
-      );
+      setStatusError(err instanceof Error ? err.message : 'Unable to update customer status');
+      setDeactivateTarget(null);
     } finally {
       setUpdatingStatusId(null);
     }
   };
 
-  const firstVisiblePage = Math.max(
-    1,
-    Math.min(page - 2, Math.max(totalPages - 4, 1)),
-  );
+  // Turning an active customer off asks for confirmation first
+  const handleToggle = (customer: CustomerRow) => {
+    if (customer.isActive) setDeactivateTarget(customer);
+    else void changeStatus(customer);
+  };
 
-  const visiblePages = Array.from(
-    {
-      length: Math.min(5, totalPages),
-    },
-    (_, index) => firstVisiblePage + index,
-  );
+  const from = total === 0 ? 0 : (page - 1) * limit + 1;
+  const to = Math.min(page * limit, total);
+  const nextCustomerId = `CUST-${String(total + 1).padStart(4, '0')}`;
 
   return (
     <>
-      <div className="w-full max-w-full bg-white border border-[#cbd5e1] rounded-2xl overflow-hidden flex flex-col min-h-0 shadow-[0_8px_24px_rgba(15,23,42,0.06)] box-border">
-        {/* HEADER */}
-        <div className="w-full flex justify-between items-center gap-3 px-5 py-3.5 border-b border-[#e5e7eb] bg-white box-border">
-          <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-            <span className="text-lg font-semibold text-[#002B73]">
-              Active Directory
-            </span>
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        {/* Toolbar */}
+        <div className="flex flex-col gap-2.5 rounded-2xl border border-[#E2E8F0] bg-white p-3 shadow-xs sm:flex-row sm:items-center">
+          <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div className="relative flex-1 sm:max-w-sm">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]"
+              />
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Search by name, phone, email..."
+                style={{ fontSize: '12px' }}
+                className="h-9 w-full rounded-lg border border-transparent bg-[#F1F5F9] pl-9 pr-3 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#2563EB] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/15"
+              />
+            </div>
 
-            {stats.newToday > 0 && (
-              <span className="bg-[#E0E7FF] text-[#1D4ED8] px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap">
-                +{stats.newToday} New Today
-              </span>
-            )}
+            <div className="relative sm:w-36">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                style={{ fontSize: '12px' }}
+                className="h-9 w-full appearance-none rounded-lg border border-transparent bg-[#F1F5F9] pl-3 pr-8 text-xs font-medium text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/15"
+              >
+                <option value="all">All Status</option>
+                <option value="Enable">Active</option>
+                <option value="Disable">Inactive</option>
+              </select>
+              <ChevronDown
+                size={14}
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B]"
+              />
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* FILTER BUTTON */}
+          <div className="flex items-center gap-2 sm:ml-auto">
             <button
               type="button"
-              className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center border border-[#e5e7eb] rounded-lg text-[#64748B] bg-transparent cursor-pointer flex-shrink-0 hover:bg-gray-50 transition-colors"
-              aria-label="Filter customers"
-              onClick={() => {
-                setShowFilter((prev) => {
-                  const next = !prev;
-
-                  if (next) {
-                    void fetchAllCustomers();
-                  }
-
-                  return next;
-                });
-              }}
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-              </svg>
-            </button>
-
-            {/* DOWNLOAD BUTTON */}
-            <button
-              type="button"
-              className={`w-11 h-11 flex items-center justify-center border border-[#e5e7eb] rounded-lg text-[#64748B] bg-transparent cursor-pointer flex-shrink-0 hover:bg-gray-50 transition-colors ${
-                downloadCustomers.length === 0 || allCustomersLoading
-                  ? "opacity-50 cursor-not-allowed"
-                  : ""
-              }`}
-              aria-label="Download customers"
               onClick={handleDownload}
-              disabled={downloadCustomers.length === 0 || allCustomersLoading}
+              disabled={filteredAllCustomers.length === 0 || allCustomersLoading}
+              style={{ fontSize: '12px' }}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#334155] shadow-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
+              <Download size={14} className="text-[#64748B]" /> Export
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              style={{ fontSize: '12px' }}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#1D4ED8] sm:flex-none"
+            >
+              <Plus size={14} strokeWidth={2.5} /> Add Customer
             </button>
           </div>
         </div>
 
-        {/* FILTER */}
-        {showFilter && (
-          <div className="flex gap-2.5 px-5 py-3.5 border-b border-[#e5e7eb] bg-[#F8FAFC] flex-wrap items-center box-border">
-            <input
-              type="text"
-              placeholder="Search by name, email, phone..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="flex-1 min-w-[180px] sm:min-w-[200px] h-10 border border-[#CBD5E1] rounded-lg px-3 text-[12px] outline-none box-border focus:border-[#003B7A] transition-colors bg-white text-[#0F172A]"
-            />
-
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as "all" | "Enable" | "Disable");
-
-                void fetchAllCustomers();
-              }}
-              className="flex-0 min-w-[130px] h-10 border border-[#CBD5E1] rounded-lg px-3 text-[12px] bg-white outline-none focus:border-[#003B7A] transition-colors text-[#0F172A]"
-            >
-              <option value="all">All Status</option>
-
-              <option value="Enable">Enable</option>
-
-              <option value="Disable">Disable</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSearchText("");
-                setStatusFilter("all");
-              }}
-              className="h-10 border border-[#CBD5E1] rounded-lg px-4 bg-white cursor-pointer font-semibold text-[#334155] hover:bg-gray-50 transition-colors text-[12px]"
-            >
-              Clear
-            </button>
-
-            <span className="text-[13px] text-[#64748B]">
-              {allCustomersLoading
-                ? "Loading all customers..."
-                : `${filteredAllCustomers.length} result(s)`}
-            </span>
-          </div>
-        )}
-
-        {/* ERROR */}
         {statusError && (
           <div
             role="alert"
-            className="px-5 py-3 text-[#b91c1c] bg-[#fef2f2] border-b border-[#fecaca] text-[12px] font-semibold overflow-anywhere"
+            className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-600"
           >
             {statusError}
           </div>
         )}
 
-        {/* TABLE */}
-        <div className="w-full overflow-x-auto overflow-y-visible">
-          <table className="w-full min-w-[1100px] table-fixed border-collapse">
-            <colgroup>
-              <col style={{ width: "11%" }} />
-              <col style={{ width: "17%" }} />
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "23%" }} />
-              <col style={{ width: "15%" }} />
-            </colgroup>
-
-            <thead>
-              <tr>
-                <th className="text-center px-3 py-4 bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold border-b border-[#E5E7EB]">
-                  Customer ID
-                </th>
-
-                <th className="text-center px-3 py-4 bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold border-b border-[#E5E7EB]">
-                  Customer Name
-                </th>
-
-                <th className="text-center px-3 py-4 bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold border-b border-[#E5E7EB]">
-                  Email Address
-                </th>
-
-                <th className="text-center px-3 py-4 bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold border-b border-[#E5E7EB]">
-                  Phone Number
-                </th>
-
-                <th className="text-center px-3 py-4 bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold border-b border-[#E5E7EB]">
-                  Customer Address
-                </th>
-
-                <th className="text-center px-3 py-4 bg-[#F8FAFC] text-[#64748B] text-[12px] font-bold border-b border-[#E5E7EB]">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading || allCustomersLoading ? (
-                <tr>
-                  <td colSpan={6}>
-                    <div className="py-16 text-center text-[#64748B] text-[15px]">
-                      Loading customers...
-                    </div>
-                  </td>
+        {/* Table card */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
+          <div className="min-h-0 w-full flex-1 overflow-auto">
+            <table className="w-full min-w-[1040px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                  {['Customer Info', 'Contact Details', 'Shipping Address', 'Mail Verified', 'Type'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-[#64748B]"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                  <th className="px-5 py-3 text-center text-xs font-bold uppercase tracking-wider text-[#64748B]">
+                    Total Orders
+                  </th>
+                  <th className="sticky right-0 z-[1] bg-[#F8FAFC] px-5 py-3 text-center text-xs font-bold uppercase tracking-wider text-[#64748B] md:static">
+                    Actions
+                  </th>
                 </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={6}>
-                    <div className="py-16 text-center text-[#d32f2f] text-[15px]">
+              </thead>
+
+              <tbody className="divide-y divide-[#F1F5F9]">
+                {loading || allCustomersLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`sk-${i}`}>
+                      {[0, 1, 2, 3, 4, 5, 6].map((c) => (
+                        <td key={c} className="px-5 py-4">
+                          <div className="space-y-1.5">
+                            <Skeleton className={`h-3 ${c === 0 ? 'w-4/5' : 'w-3/5'}`} />
+                            {c === 0 && <Skeleton className="h-2.5 w-2/5" />}
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : error ? (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center text-xs font-semibold text-rose-600">
                       Error: {error}
-                    </div>
-                  </td>
-                </tr>
-              ) : tableCustomers.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>
-                    <div className="py-16 text-center text-[#64748B] text-[15px]">
-                      No customers found.{" "}
-                      <button
-                        type="button"
-                        className="text-[#174092] font-semibold underline cursor-pointer bg-none border-none text-[15px]"
-                        onClick={() => setIsModalOpen(true)}
-                      >
-                        Add your first customer →
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                tableCustomers.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    className="hover:bg-[#f8fafc] transition-colors"
-                  >
-                    {/* CUSTOMER ID */}
-                    <td className="px-3 py-3 border-b border-[#E5E7EB] text-center align-middle">
-                      <div className="w-full min-w-0 max-w-full">
-                        <span className="block break-words text-[10px] text-[#64748B] font-mono">
-                          {customer.id}
-                        </span>
-                      </div>
                     </td>
-
-                    {/* CUSTOMER NAME */}
-                    <td className="px-3 py-3 border-b border-[#E5E7EB] align-middle">
-                      <div className="w-full min-w-0 max-w-full">
-                        <div className="flex items-center gap-2.5 min-w-0 pl-11 text-left">
-                          {/* Customer initials */}
-                          {/*
-                            <span className="w-8 h-8 min-w-8 rounded-full bg-[#DBEAFE] text-[#1E40AF] text-[13px] font-bold flex items-center justify-center">
-                              {customer.initials}
-                            </span>
-                            */}
-
-                          <div className="min-w-0 max-w-full overflow-hidden">
-                            <span className="block break-words overflow-wrap-anywhere text-[12px] text-[#0F172A]">
-                              {customer.name}
+                  </tr>
+                ) : tableCustomers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center text-xs text-[#64748B]">
+                      No customers found.
+                    </td>
+                  </tr>
+                ) : (
+                  tableCustomers.map((c) => (
+                    <tr key={c.recordId || c.id} className="transition-colors hover:bg-[#F8FAFC]/80">
+                      {/* Customer info */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatarStyle(
+                              c.id || c.name
+                            )} ${c.isActive ? '' : 'opacity-60'}`}
+                          >
+                            {c.initials}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-bold text-[#0F172A]">{c.name}</p>
+                            <span className="mt-0.5 inline-block rounded bg-[#EFF6FF] px-1.5 py-0.5 text-xs font-semibold text-[#2563EB]">
+                              {displayId(c.id)}
                             </span>
                           </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* EMAIL */}
-                    <td className="px-3 py-3 border-b border-[#E5E7EB] align-middle">
-                      <div className="w-full min-w-0 max-w-full pl-15">
-                        <span className="block break-words overflow-wrap-anywhere text-left text-[12px] text-[#0F172A]">
-                          {customer.email}
+                      {/* Contact */}
+                      <td className="px-5 py-3.5">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-[#0F172A]">
+                          <Phone size={12} className="shrink-0 text-[#64748B]" /> {c.phone}
+                        </p>
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-[#64748B]">
+                          <Mail size={12} className="shrink-0" />
+                          <span className="break-all">{c.email}</span>
+                        </p>
+                      </td>
+
+                      {/* Address */}
+                      <td className="max-w-[240px] px-5 py-3.5">
+                        <p className="flex items-start gap-1.5 text-xs text-[#334155]">
+                          <MapPin size={12} className="mt-0.5 shrink-0 text-[#64748B]" />
+                          <span className="line-clamp-2 break-words">{c.address}</span>
+                        </p>
+                      </td>
+
+                      {/* Mail verified */}
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${
+                            c.emailVerified ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                          }`}
+                        >
+                          <span className={`size-1.5 rounded-full ${c.emailVerified ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                          {c.emailVerified ? 'Verified' : 'Not verified'}
                         </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* PHONE */}
-                    <td className="px-3 py-3 border-b border-[#E5E7EB] align-middle">
-                      <div className="w-full min-w-0 max-w-full text-center">
-                        <span className="block break-words text-[12px] text-[#0F172A]">
-                          {customer.phone}
+                      {/* Type */}
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold ${
+                            c.type === 'Website' ? 'bg-violet-50 text-violet-600' : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {c.type}
                         </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* ADDRESS */}
-                    <td className="px-3 py-3 border-b border-[#E5E7EB] align-middle">
-                      <div className="w-full min-w-0 max-w-full pl-18">
-                        <span className="block break-words overflow-wrap-anywhere text-left text-[12px] text-[#0F172A]">
-                          {customer.address}
+                      {/* Total orders */}
+                      <td className="px-5 py-3.5 text-center">
+                        <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-[#F1F5F9] px-2 py-0.5 text-xs font-bold text-[#334155]">
+                          {c.totalOrders}
                         </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* ACTIONS */}
-                    <td className="border-b border-[#E5E7EB] text-center align-middle">
-                      <div className="flex items-center justify-center gap-2 p-3">
-                        {customer.isActive && (
+                      {/* Actions */}
+                      <td className="sticky right-0 z-[1] bg-white px-5 py-3.5 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)] md:static md:shadow-none">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
-                            className="w-12 h-8 flex items-center justify-center rounded-lg border border-[#cbd5e1] text-[#0f172a] bg-white cursor-pointer flex-shrink-0 hover:bg-gray-50 transition-colors"
-                            aria-label="Edit customer"
-                            onClick={() => handleEdit(customer)}
+                            onClick={() => setViewingCustomer(c)}
+                            aria-label={`View ${c.name}`}
+                            title="View customer"
+                            className="flex size-8 items-center justify-center rounded-lg bg-[#F1F5F9] text-[#475569] hover:bg-blue-50 hover:text-[#2563EB]"
                           >
-                            <svg
-                              width="15"
-                              height="15"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
+                            <Eye size={14} />
                           </button>
-                        )}
-
-                        <button
-                          type="button"
-                          className={`min-w-[68px] h-7 px-2 rounded-md font-semibold leading-none cursor-pointer flex-shrink-0 whitespace-nowrap transition-opacity ${
-                            customer.isActive
-                              ? "text-[#b91c1c] border border-[#fecaca] bg-[#fef2f2] hover:bg-[#fee2e2]"
-                              : "text-[#166534] border border-[#bbf7d0] bg-[#f0fdf4] hover:bg-[#dcfce7]"
-                          } ${
-                            updatingStatusId === customer.id ? "opacity-55" : ""
-                          }`}
-                          onClick={() => handleStatusChange(customer)}
-                          disabled={updatingStatusId === customer.id}
-                        >
-                          {updatingStatusId === customer.id
-                            ? "..."
-                            : customer.isActive
-                              ? "Disable"
-                              : "Enable"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* PAGINATION */}
-        <div className="w-full flex flex-col sm:flex-row justify-between items-center gap-4 px-4 py-2 bg-white border-t border-[#e5e7eb] flex-shrink-0 box-border">
-          <div className="text-[12px] text-[#64748B] text-center sm:text-left min-w-0">
-            {isFiltering
-              ? `Showing ${tableCustomers.length} filtered customer(s)`
-              : total > 0
-                ? `Showing ${from}–${to} of ${total} customers`
-                : "No customers"}
+                          <button
+                            type="button"
+                            onClick={() => setEditingCustomer(c)}
+                            disabled={!c.isActive}
+                            aria-label={`Edit ${c.name}`}
+                            title={c.isActive ? 'Edit customer' : 'Activate the customer to edit'}
+                            className="flex size-8 items-center justify-center rounded-lg bg-[#F1F5F9] text-[#475569] hover:bg-blue-50 hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={c.isActive}
+                            aria-label={c.isActive ? `Deactivate ${c.name}` : `Activate ${c.name}`}
+                            title={c.isActive ? 'Active – click to deactivate' : 'Inactive – click to activate'}
+                            onClick={() => handleToggle(c)}
+                            disabled={updatingStatusId === c.id}
+                            className={`relative ml-1 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                              c.isActive ? 'bg-[#16A34A]' : 'bg-[#CBD5E1]'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 size-4 rounded-full bg-white shadow transition-all ${
+                                c.isActive ? 'left-[18px]' : 'left-0.5'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
 
-          {!isFiltering && totalPages > 1 && (
-            <div className="flex items-center justify-center gap-1.5">
-              {/* PREVIOUS */}
-              <button
-                type="button"
-                className={`w-9 h-9 flex items-center justify-center border border-transparent bg-white rounded-lg text-[12px] text-[#334155] cursor-pointer flex-shrink-0 hover:bg-gray-50 transition-colors ${
-                  page <= 1 ? "opacity-40 cursor-not-allowed" : ""
-                }`}
-                onClick={() => goToPage(page - 1)}
-                disabled={page <= 1}
-                aria-label="Previous page"
-              >
-                &lt;
-              </button>
+          {/* Pagination */}
+          <div className="flex flex-col items-center gap-3 border-t border-[#E2E8F0] bg-white px-5 py-3 sm:flex-row sm:justify-between">
+            <p className="text-xs font-medium text-[#64748B]">
+              {isFiltering
+                ? `Showing ${tableCustomers.length} filtered customer(s)`
+                : total > 0
+                  ? `Showing ${from} to ${to} of ${total.toLocaleString('en-US')} customers`
+                  : 'No customers'}
+            </p>
 
-              {/* PAGE NUMBERS */}
-              {visiblePages.map((p) => (
-                <button
-                  type="button"
-                  key={p}
-                  className={`w-9 h-9 flex items-center justify-center border border-transparent rounded-lg text-[12px] cursor-pointer flex-shrink-0 transition-colors ${
-                    p === page
-                      ? "bg-[#003B7A] text-white border-[#003B7A] shadow-[0_4px_10px_rgba(0,59,122,0.18)]"
-                      : "bg-white text-[#334155] hover:bg-gray-50"
-                  }`}
-                  onClick={() => goToPage(p)}
-                  aria-current={p === page ? "page" : undefined}
-                >
-                  {p}
-                </button>
-              ))}
-
-              {/* NEXT */}
-              <button
-                type="button"
-                className={`w-9 h-9 flex items-center justify-center border border-transparent bg-white rounded-lg text-[9px] text-[#334155] cursor-pointer flex-shrink-0 hover:bg-gray-50 transition-colors ${
-                  page >= totalPages ? "opacity-40 cursor-not-allowed" : ""
-                }`}
-                onClick={() => goToPage(page + 1)}
-                disabled={page >= totalPages}
-                aria-label="Next page"
-              >
-                &gt;
-              </button>
-            </div>
-          )}
+            {!isFiltering && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <PageBtn label="Previous page" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+                  <ChevronLeft size={14} />
+                </PageBtn>
+                {getPageNumbers(page, totalPages).map((p, i) =>
+                  p === 'ellipsis' ? (
+                    <span
+                      key={`e-${i}`}
+                      className="flex h-8 w-6 items-center justify-center text-xs font-semibold text-slate-400"
+                    >
+                      ...
+                    </span>
+                  ) : (
+                    <PageBtn key={p} active={p === page} label={`Page ${p}`} onClick={() => goToPage(p)}>
+                      {p}
+                    </PageBtn>
+                  )
+                )}
+                <PageBtn label="Next page" disabled={page >= totalPages} onClick={() => goToPage(page + 1)}>
+                  <ChevronRight size={14} />
+                </PageBtn>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ADD / EDIT CUSTOMER MODAL */}
+      {/* Add / Edit */}
       <AddCustomerModal
-        isOpen={isModalOpen}
-        onClose={closeModal}
+        isOpen={addOpen || Boolean(editingCustomer)}
+        onClose={() => {
+          setAddOpen(false);
+          setEditingCustomer(null);
+        }}
         onSuccess={async () => {
           await refresh();
           await fetchAllCustomers();
           onCustomersChanged?.();
         }}
+        nextId={nextCustomerId}
         initialData={editingCustomer}
+      />
+
+      {/* View */}
+      <ViewCustomerModal
+        customer={viewingCustomer}
+        onClose={() => setViewingCustomer(null)}
+        onEdit={(c) => {
+          setViewingCustomer(null);
+          if (c.isActive) setEditingCustomer(c);
+        }}
+      />
+
+      {/* Deactivate */}
+      <DeactivateCustomerModal
+        customer={deactivateTarget}
+        busy={Boolean(deactivateTarget && updatingStatusId === deactivateTarget.id)}
+        onCancel={() => setDeactivateTarget(null)}
+        onConfirm={() => deactivateTarget && void changeStatus(deactivateTarget)}
       />
     </>
   );
