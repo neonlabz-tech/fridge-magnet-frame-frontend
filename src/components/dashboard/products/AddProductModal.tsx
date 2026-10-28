@@ -1,14 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { ChangeEvent, CSSProperties, KeyboardEvent, WheelEvent } from 'react';
-import { ImagePlus, Images, X } from 'lucide-react';
-import type { PersonalizationFormOption, Product, ProductFormData } from '@/types/product';
+import type { ChangeEvent, KeyboardEvent, WheelEvent } from 'react';
+import { ImagePlus, Images, Trash2, UploadCloud, X, Package } from 'lucide-react';
+import type { Product, ProductFormData } from '@/types/product';
+import MaterialsEditor from './MaterialsEditor';
+import { readInventory, refreshInventory } from '@/lib/inventoryStore';
+import { type Material, readMaterials, refreshMaterials, saveMaterials, materialCost, producibleUnits } from '@/lib/materials';
+import { useToastStore } from '@/store/toastStore';
+import type { InventoryItem } from '@/types/inventory';
+import { ModalShell, inputCls, textareaCls, labelCls, btnGhost, btnPrimary } from '@/components/dashboard/shared/UiKit';
 
 interface AddProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit?: (data: ProductFormData) => boolean | void | Promise<boolean | void>;
+  onDelete?: (product: Product) => void;
   editingProduct?: Product | null;
   autoProductId?: string;
 }
@@ -19,7 +26,8 @@ const EMPTY: ProductFormData = {
   category: 'Wooden Frames',
   stock: 0,
   price: 0,
-  imagecount:0,
+  manufactureCost: 0,
+  imagecount: 0,
   description: '',
   personalization: false,
   primaryImage: null,
@@ -27,28 +35,38 @@ const EMPTY: ProductFormData = {
 };
 
 const MAX_GALLERY = 5;
+type FieldErrors = Partial<Record<'name' | 'description' | 'price' | 'primaryImage', string>>;
 
-type FieldErrors = Partial<Record<'name' | 'productId' | 'description' | 'price' | 'primaryImage' | 'imagecount', string>>;
+const fmt = (n: number) => `LKR ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function AddProductModal({
   isOpen,
   onClose,
   onSubmit,
+  onDelete,
   editingProduct = null,
   autoProductId = '',
 }: AddProductModalProps) {
   const [form, setForm] = useState<ProductFormData>(EMPTY);
-  const [personalizationOptions, setPersonalizationOptions] = useState<PersonalizationFormOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { addToast } = useToastStore();
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-
   const [existingGalleryUrls, setExistingGalleryUrls] = useState<string[]>([]);
   const [removedGalleryUrls, setRemovedGalleryUrls] = useState<string[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+
+  const changeMaterials = (next: Material[]) => {
+    setMaterials(next);
+    // With materials, the manufacture cost follows the inventory unit values automatically.
+    if (next.length) setForm((p) => ({ ...p, manufactureCost: materialCost(next, inventory) }));
+  };
 
   useEffect(() => {
     if (!isOpen) return;
-
+    setInventory(readInventory());
+    refreshInventory().then(setInventory);
     if (editingProduct) {
       setForm({
         name: editingProduct.name ?? '',
@@ -56,432 +74,355 @@ export default function AddProductModal({
         category: editingProduct.series ?? 'Wooden Frames',
         stock: Number(editingProduct.stockCount ?? 0),
         price: Number(editingProduct.price ?? 0),
-        imagecount:Number(editingProduct.imagecount ?? 0),
+        manufactureCost: Number(editingProduct.manufactureCost ?? 0),
+        imagecount: Number(editingProduct.imagecount ?? 0),
         description: editingProduct.description ?? '',
         personalization: false,
         primaryImage: null,
         galleryImages: [],
       });
       setExistingGalleryUrls(editingProduct.galleryImageUrls ?? []);
+      const matKey = editingProduct.sku ?? editingProduct.id ?? '';
+      setMaterials(readMaterials(matKey));
+      refreshMaterials().then(() => setMaterials(readMaterials(matKey)));
     } else {
+      setMaterials([]);
       setForm({ ...EMPTY, productId: autoProductId });
       setExistingGalleryUrls([]);
     }
-
     setRemovedGalleryUrls([]);
-    setPersonalizationOptions([]);
     setGalleryError(null);
     setFieldErrors({});
   }, [isOpen, editingProduct, autoProductId]);
 
-  const primaryImagePreviewUrl = useMemo(() => {
-    if (form.primaryImage) {
-      return URL.createObjectURL(form.primaryImage);
-    }
-    return editingProduct?.primaryImageUrl || null;
-  }, [form.primaryImage, editingProduct?.primaryImageUrl]);
-
-  useEffect(() => {
-    return () => {
-      if (form.primaryImage && primaryImagePreviewUrl) {
-        URL.revokeObjectURL(primaryImagePreviewUrl);
-      }
-    };
-  }, [form.primaryImage, primaryImagePreviewUrl]);
-
-  const galleryPreviewUrls = useMemo(
-    () => form.galleryImages.map((file) => URL.createObjectURL(file)),
-    [form.galleryImages],
+  const primaryUrl = useMemo(
+    () => (form.primaryImage ? URL.createObjectURL(form.primaryImage) : editingProduct?.primaryImageUrl || null),
+    [form.primaryImage, editingProduct?.primaryImageUrl]
+  );
+  useEffect(
+    () => () => {
+      if (form.primaryImage && primaryUrl) URL.revokeObjectURL(primaryUrl);
+    },
+    [form.primaryImage, primaryUrl]
   );
 
-  useEffect(() => {
-    return () => {
-      galleryPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [galleryPreviewUrls]);
+  const newGalleryUrls = useMemo(() => form.galleryImages.map((f) => URL.createObjectURL(f)), [form.galleryImages]);
+  useEffect(() => () => newGalleryUrls.forEach((u) => URL.revokeObjectURL(u)), [newGalleryUrls]);
 
-  const visibleExistingGalleryUrls = useMemo(
-    () => existingGalleryUrls.filter((url) => !removedGalleryUrls.includes(url)),
-    [existingGalleryUrls, removedGalleryUrls],
+  const visibleExisting = useMemo(
+    () => existingGalleryUrls.filter((u) => !removedGalleryUrls.includes(u)),
+    [existingGalleryUrls, removedGalleryUrls]
   );
+  const galleryCount = visibleExisting.length + form.galleryImages.length;
 
-  const totalGalleryCount = visibleExistingGalleryUrls.length + form.galleryImages.length;
+  // With materials set, stock = how many units the inventory can produce right now.
+  const hasMaterials = materials.some((m) => m.qty > 0);
+  const autoStock = hasMaterials ? producibleUnits(materials, inventory) : null;
+  const stockValue = autoStock ?? (Number(form.stock) || 0);
+  // Manufacture cost follows the material cost whenever materials are set (also when editing).
+  const autoCost = hasMaterials ? materialCost(materials, inventory) : null;
+  const costValue = autoCost ?? (Number(form.manufactureCost) || 0);
 
-  if (!isOpen) return null;
+  const profit = (Number(form.price) || 0) - costValue;
+  const margin = form.price ? (profit / Number(form.price)) * 100 : 0;
 
-  const inputStyle: CSSProperties = {
-    height: 50,
-    background: '#F3F3F8',
-    border: '1px solid #C3C6D4',
-    borderRadius: 8,
-    fontSize: 16,
-    color: '#1A1C1F',
-    width: '100%',
-    padding: '0 16px',
-    outline: 'none',
+  const setNum = (key: 'stock' | 'price' | 'manufactureCost' | 'imagecount') => (e: ChangeEvent<HTMLInputElement>) => {
+    if (key === 'price') setFieldErrors((p) => ({ ...p, price: undefined }));
+    setForm((p) => ({ ...p, [key]: Number(e.target.value) || 0 }));
   };
-
-  const handleChange = (
-  e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-) => {
-  const { name, value } = e.target;
-
-  if (name in fieldErrors) {
-    setFieldErrors(prev => ({ ...prev, [name]: undefined }));
-  }
-
-  setForm(prev => ({
-    ...prev,
-    [name]:
-      name === 'stock' ||
-      name === 'price' ||
-      name === 'imagecount'
-        ? Number(value) || 0
-        : value,
-  }));
-};
-
-  const handleNumberWheel = (e: WheelEvent<HTMLInputElement>) => {
-    e.currentTarget.blur();
-  };
-
-  const handleNumberKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-    }
+  const noWheel = (e: WheelEvent<HTMLInputElement>) => e.currentTarget.blur();
+  const noArrows = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
   };
 
   const handleFile = (e: ChangeEvent<HTMLInputElement>, type: 'primary' | 'gallery') => {
     if (!e.target.files) return;
-
     if (type === 'primary') {
       const file = e.target.files[0] ?? null;
-      setForm(prev => ({ ...prev, primaryImage: file }));
-      if (file) {
-        setFieldErrors(prev => ({ ...prev, primaryImage: undefined }));
-      }
-      return;
-    }
-
-    const newFiles = Array.from(e.target.files);
-    const combinedNewFiles = [...form.galleryImages, ...newFiles];
-    const totalAfterAdd = visibleExistingGalleryUrls.length + combinedNewFiles.length;
-
-    if (totalAfterAdd > MAX_GALLERY) {
-      setGalleryError(`You can have a maximum of ${MAX_GALLERY} gallery images in total.`);
+      setForm((p) => ({ ...p, primaryImage: file }));
+      if (file) setFieldErrors((p) => ({ ...p, primaryImage: undefined }));
       e.target.value = '';
       return;
     }
-
+    const combined = [...form.galleryImages, ...Array.from(e.target.files)];
+    if (visibleExisting.length + combined.length > MAX_GALLERY) {
+      setGalleryError(`Maximum ${MAX_GALLERY} gallery images allowed.`);
+      e.target.value = '';
+      return;
+    }
     setGalleryError(null);
-    setForm(prev => ({ ...prev, galleryImages: combinedNewFiles }));
+    setForm((p) => ({ ...p, galleryImages: combined, imagecount: Math.max(p.imagecount, 0) }));
     e.target.value = '';
   };
 
-  const handleRemovePrimaryImage = () => {
-    setForm(prev => ({ ...prev, primaryImage: null }));
-  };
+  if (!isOpen) return null;
 
-  const handleRemoveExistingGalleryImage = (url: string) => {
-    setRemovedGalleryUrls(prev => [...prev, url]);
-    setGalleryError(null);
-  };
-
-  const handleRemoveNewGalleryImage = (idx: number) => {
-    setForm(prev => ({
-      ...prev,
-      galleryImages: prev.galleryImages.filter((_, i) => i !== idx),
-    }));
-    setGalleryError(null);
-  };
-
-  const handleSubmit = async (e: { preventDefault(): void }) => {
-    e.preventDefault();
-    if (galleryError) return;
-
+  const handleSubmit = async () => {
     const errors: FieldErrors = {};
     if (!form.name.trim()) errors.name = 'Product name is required.';
-    if (!form.productId.trim()) errors.productId = 'Product ID is required.';
     if (!form.description.trim()) errors.description = 'Description is required.';
-
-    if (!form.price || Number(form.price) <= 0) {
-      errors.price = 'Price is required.';
-    }
-
-
-    if (!form.primaryImage && !editingProduct?.primaryImageUrl) {
-      errors.primaryImage = 'Primary image is required.';
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
-      return;
-    }
+    if (!form.price || Number(form.price) <= 0) errors.price = 'Selling price is required.';
+    if (!form.primaryImage && !editingProduct?.primaryImageUrl) errors.primaryImage = 'Primary image is required.';
+    if (Object.keys(errors).length) return setFieldErrors(errors);
 
     setIsSubmitting(true);
-
+    const productKey = form.productId;
     try {
-      const submitData: ProductFormData = {
+      const result = await onSubmit?.({
         ...form,
         price: Number(form.price) || 0,
-        stock: Number(form.stock) || 0,
-        imagecount:Number(form.imagecount) || 0,
+        stock: stockValue,
+        manufactureCost: costValue,
+        imagecount: Math.max(0, Math.floor(Number(form.imagecount) || 0)),
         personalization: false,
         personalizationEnabled: false,
         personalizationOptions: [],
-        existingGalleryUrls: visibleExistingGalleryUrls,
+        existingGalleryUrls: visibleExisting,
         removedGalleryUrls,
-      };
-
-      const shouldReset = await onSubmit?.(submitData);
-
-      if (shouldReset !== false) {
+      });
+      if (result !== false) {
+        try {
+          await saveMaterials(productKey, materials.filter((m) => m.qty > 0));
+        } catch (e) {
+          addToast(e instanceof Error ? e.message : 'Could not save product materials.', 'error');
+        }
         setForm(EMPTY);
         setExistingGalleryUrls([]);
         setRemovedGalleryUrls([]);
-        setPersonalizationOptions([]);
-        setGalleryError(null);
-        setFieldErrors({});
       }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const canAddMoreGallery = totalGalleryCount < MAX_GALLERY;
+  const err = (m?: string) => (m ? <p className="mt-1 text-xs font-semibold text-rose-600">{m}</p> : null);
+  const errBorder = (m?: string) => (m ? 'border-rose-400' : '');
 
   return (
-    <div className="fixed inset-0 z-200 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-
-      <div
-        className="relative flex w-full flex-col overflow-hidden"
-        style={{
-          maxWidth: 520,
-          maxHeight: '92vh',
-          background: '#FFFFFF',
-          borderRadius: 16,
-          boxShadow: '0px 20px 50px rgba(0,0,0,0.2)',
-        }}
-      >
-        <div className="flex flex-shrink-0 items-start justify-between px-8 pb-6 pt-8" style={{ borderBottom: '1px solid #F1F5F9' }}>
-          <div>
-            <h2 className="text-2xl font-bold" style={{ color: '#002B73' }}>
-              {editingProduct ? 'Edit Product' : 'Add New Product'}
-            </h2>
-            <p className="mt-1 text-sm" style={{ color: '#64748B' }}>
-              {editingProduct ? 'Update product details.' : 'Enter details for the new gallery item.'}
-            </p>
-          </div>
-
-          <button type="button" onClick={onClose} className="ml-4 flex h-8 w-8 items-center justify-center rounded-full hover:bg-slate-100">
-            <X size={18} color="#94A3B8" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto px-8 py-6">
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-[#1A1C1F]">Product Name</label>
-            <input type="text" name="name" value={form.name} onChange={handleChange} placeholder="e.g. Vintage Walnut Frame" style={{ ...inputStyle, border: fieldErrors.name ? '1px solid #BC0000' : inputStyle.border }} />
-            {fieldErrors.name && <p className="text-xs font-semibold text-red-700">{fieldErrors.name}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-[#1A1C1F]">Product ID</label>
-
-              <input
-                type="text"
-                name="productId"
-                value={form.productId || (editingProduct ? '' : 'Generating…')}
-                readOnly
-                disabled
-                placeholder="Auto-generated"
-                style={{ ...inputStyle, background: '#EDEEF3', color: '#64748B', cursor: 'not-allowed' }}
-              />
-              {fieldErrors.productId && <p className="text-xs font-semibold text-red-700">{fieldErrors.productId}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-[#1A1C1F]">Stock</label>
-              <input 
-              type="number" 
-              name="stock" 
-              value={form.stock === 0 ? '' : form.stock} 
-              placeholder="Enter stock" 
-              onChange={handleChange} 
-              onWheel={handleNumberWheel} 
-              onKeyDown={handleNumberKeyDown} 
-              min={0} 
-              step={1} 
-              inputMode="numeric" 
-              style={inputStyle} />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-[#1A1C1F]">Price</label>
-              <input
-                type="number"
-                name="price"
-                value={form.price === 0 ? '' : form.price}
-                placeholder="Enter price"
-                onChange={handleChange}
-                onWheel={handleNumberWheel}
-                onKeyDown={handleNumberKeyDown}
-                min={0}
-                step="1"
-                inputMode="decimal"
-                style={{ ...inputStyle, border: fieldErrors.price ? '1px solid #BC0000' : inputStyle.border }}
-              />
-              {fieldErrors.price && <p className="text-xs font-semibold text-red-700">{fieldErrors.price}</p>}
-            </div>
-
-             <div className="space-y-2">
-              <label className="block text-sm font-semibold text-[#1A1C1F]">Image Count</label>
-              <input
-                type="number"
-                name="imagecount"
-                value={form.imagecount === 0 ? '' : form.imagecount}
-                placeholder="Enter Max image"
-                onChange={handleChange}
-                onWheel={handleNumberWheel}
-                onKeyDown={handleNumberKeyDown}
-                min={0}
-                step={1}
-                inputMode="numeric"
-                style={{ ...inputStyle, border: fieldErrors.imagecount ? '1px solid #BC0000' : inputStyle.border }}
-              />
-              {fieldErrors.imagecount && <p className="text-xs font-semibold text-red-700">{fieldErrors.imagecount}</p>}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-[#1A1C1F]">Product Description</label>
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              rows={4}
-              placeholder="Provide detailed information..."
-              className="w-full resize-none p-4 outline-none"
-              style={{
-                background: '#F3F3F8',
-                border: fieldErrors.description ? '1px solid #BC0000' : '1px solid #C3C6D4',
-                borderRadius: 8,
-                fontSize: 16,
-                color: '#1A1C1F',
-                minHeight: 120,
-              }}
-            />
-            {fieldErrors.description && <p className="text-xs font-semibold text-red-700">{fieldErrors.description}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-[#1A1C1F]">Primary Image</label>
-
-              {primaryImagePreviewUrl ? (
-                <div
-                  className="relative overflow-hidden rounded-xl"
-                  style={{ height: 120, border: `2px solid ${fieldErrors.primaryImage ? '#BC0000' : '#C3C6D4'}` }}
-                >
-                  <img src={primaryImagePreviewUrl} alt="Primary preview" className="h-full w-full object-cover" />
-
-                  <button
-                    type="button"
-                    onClick={handleRemovePrimaryImage}
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 shadow hover:bg-white"
-                  >
-                    <X size={14} color="#434652" />
-                  </button>
-
-                  <label className="absolute bottom-0 left-0 right-0 cursor-pointer bg-black/50 py-1.5 text-center text-xs font-semibold text-white">
-                    Replace image
-                    <input type="file" accept="image/*" onChange={e => handleFile(e, 'primary')} className="hidden" />
-                  </label>
-                </div>
-              ) : (
-                <label className="block cursor-pointer">
-                  <input type="file" accept="image/*" onChange={e => handleFile(e, 'primary')} className="hidden" />
-                  <div
-                    className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6"
-                    style={{ borderColor: fieldErrors.primaryImage ? '#BC0000' : '#C3C6D4', background: '#F8FAFC' }}
-                  >
-                    <ImagePlus size={23} color="#94A3B8" />
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Single Upload</span>
-                    <span className="text-xs text-slate-400">Main display image</span>
-                  </div>
-                </label>
-              )}
-              {fieldErrors.primaryImage && <p className="text-xs font-semibold text-red-700">{fieldErrors.primaryImage}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-[#1A1C1F]">Product Gallery</label>
-
-              {totalGalleryCount > 0 ? (
-                <div
-                  className="flex min-h-[120px] flex-wrap content-start gap-2 rounded-xl border-2 border-dashed p-3"
-                  style={{ borderColor: '#C3C6D4', background: '#F8FAFC' }}
-                >
-                  {visibleExistingGalleryUrls.map((url) => (
-                    <div key={url} className="relative h-14 w-14 overflow-hidden rounded-lg border border-[#E2E4ED]">
-                      <img src={url} alt="Saved gallery image" className="h-full w-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveExistingGalleryImage(url)}
-                        className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/90"
-                      >
-                        <X size={10} color="#434652" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {galleryPreviewUrls.map((url, idx) => (
-                    <div key={url} className="relative h-14 w-14 overflow-hidden rounded-lg border border-[#E2E4ED]">
-                      <img src={url} alt={`New gallery ${idx + 1}`} className="h-full w-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveNewGalleryImage(idx)}
-                        className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/90"
-                      >
-                        <X size={10} color="#434652" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {canAddMoreGallery && (
-                    <label className="flex h-14 w-14 cursor-pointer items-center justify-center rounded-lg border border-dashed border-[#C3C6D4] bg-white">
-                      <input type="file" accept="image/*" multiple onChange={e => handleFile(e, 'gallery')} className="hidden" />
-                      <Images size={18} color="#94A3B8" />
-                    </label>
-                  )}
-                </div>
-              ) : (
-                <label className="block cursor-pointer">
-                  <input type="file" accept="image/*" multiple onChange={e => handleFile(e, 'gallery')} className="hidden" />
-                  <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#C3C6D4] bg-[#F8FAFC] p-6">
-                    <Images size={25} color="#94A3B8" />
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Multi Upload</span>
-                    <span className="text-xs text-slate-400">Up to {MAX_GALLERY} images</span>
-                  </div>
-                </label>
-              )}
-              {galleryError && <p className="mt-1 text-xs font-semibold text-red-700">{galleryError}</p>}
-            </div>
-          </div>
-        </form>
-
-        <div className="flex flex-shrink-0 items-center justify-end gap-3 px-8 py-6" style={{ borderTop: '1px solid #F1F5F9', background: '#FAFAFA' }}>
-          <button type="button" onClick={onClose} className="flex h-12 items-center justify-center rounded-xl bg-[#E8E8ED] px-6 text-base font-bold text-[#434652]">
+    <ModalShell
+      open={isOpen}
+      onClose={onClose}
+      icon={<Package size={18} />}
+      title={editingProduct ? 'Edit Product' : 'Add New Product'}
+      subtitle={editingProduct ? 'Update product details.' : 'Enter details for the new product.'}
+      maxWidth="max-w-2xl"
+      footer={
+        <>
+          {editingProduct && onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(editingProduct)}
+              className="mr-auto inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          )}
+          <button type="button" onClick={onClose} className={btnGhost}>
             Cancel
           </button>
-
-          <button type="button" onClick={handleSubmit} disabled={isSubmitting} className="flex h-12 items-center justify-center rounded-xl bg-[#BC0000] px-8 text-base font-bold text-white disabled:opacity-70">
-            {isSubmitting ? 'Submitting...' : editingProduct ? 'Update Product' : 'Submit Product'}
+          <button type="button" onClick={handleSubmit} disabled={isSubmitting} className={btnPrimary}>
+            {isSubmitting ? 'Saving...' : editingProduct ? 'Save Changes' : 'Publish Product'}
           </button>
+        </>
+      }
+    >
+      <div className="space-y-4 pt-1">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Product Name</label>
+            <input
+              className={`${inputCls} ${errBorder(fieldErrors.name)}`}
+              value={form.name}
+              placeholder="e.g. Vintage Walnut Frame"
+              onChange={(e) => {
+                setFieldErrors((p) => ({ ...p, name: undefined }));
+                setForm((p) => ({ ...p, name: e.target.value }));
+              }}
+            />
+            {err(fieldErrors.name)}
+          </div>
+          <div>
+            <label className={labelCls}>Product ID</label>
+            <input className={inputCls} value={form.productId || 'Generating…'} readOnly disabled />
+          </div>
+          <MaterialsEditor value={materials} onChange={changeMaterials} inventory={inventory} />
+          <div>
+            <label className={labelCls}>
+              Manufacture Unit Cost (LKR){autoCost !== null && <span className="ml-1 font-normal text-emerald-600">· auto from materials</span>}
+            </label>
+            <input
+              type="number"
+              min={0}
+              inputMode="decimal"
+              className={`${inputCls} ${autoCost !== null ? 'cursor-not-allowed bg-[#F1F5F9]' : ''}`}
+              placeholder="0.00"
+              readOnly={autoCost !== null}
+              value={autoCost !== null ? autoCost : form.manufactureCost ? form.manufactureCost : ''}
+              onChange={setNum('manufactureCost')}
+              onWheel={noWheel}
+              onKeyDown={noArrows}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Selling Unit Price (LKR)</label>
+            <input
+              type="number"
+              min={0}
+              inputMode="decimal"
+              className={`${inputCls} ${errBorder(fieldErrors.price)}`}
+              placeholder="0.00"
+              value={form.price ? form.price : ''}
+              onChange={setNum('price')}
+              onWheel={noWheel}
+              onKeyDown={noArrows}
+            />
+            {err(fieldErrors.price)}
+          </div>
+          <div>
+            <label className={labelCls}>Unit Profit (auto)</label>
+            <div
+              className={`flex h-9 items-center justify-between rounded-lg border px-3 text-xs font-bold ${
+                profit >= 0 ? 'border-emerald-100 bg-emerald-50 text-emerald-600' : 'border-rose-100 bg-rose-50 text-rose-600'
+              }`}
+            >
+              <span>
+                {profit >= 0 ? '+' : '-'}
+                {fmt(Math.abs(profit))}
+              </span>
+              <span>{margin.toFixed(1)}%</span>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>
+              Stock (units){autoStock !== null && <span className="ml-1 font-normal text-emerald-600">· auto from inventory</span>}
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              className={`${inputCls} ${autoStock !== null ? 'cursor-not-allowed bg-[#F1F5F9]' : ''}`}
+              placeholder="0"
+              readOnly={autoStock !== null}
+              value={autoStock !== null ? autoStock : form.stock ? form.stock : ''}
+              onChange={setNum('stock')}
+              onWheel={noWheel}
+              onKeyDown={noArrows}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Customer Image Count</label>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              className={inputCls}
+              placeholder="e.g. 6"
+              value={form.imagecount ? form.imagecount : ''}
+              onChange={setNum('imagecount')}
+              onWheel={noWheel}
+              onKeyDown={noArrows}
+            />
+            <p className="mt-1 text-xs text-[#94A3B8]">Number of photos the customer can upload for this product (0 = none).</p>
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Description</label>
+          <textarea
+            rows={3}
+            className={`${textareaCls} ${errBorder(fieldErrors.description)}`}
+            placeholder="Provide detailed information..."
+            value={form.description}
+            onChange={(e) => {
+              setFieldErrors((p) => ({ ...p, description: undefined }));
+              setForm((p) => ({ ...p, description: e.target.value }));
+            }}
+          />
+          {err(fieldErrors.description)}
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Primary Image</label>
+            {primaryUrl ? (
+              <div className={`relative h-32 overflow-hidden rounded-xl border-2 ${fieldErrors.primaryImage ? 'border-rose-400' : 'border-[#E2E8F0]'}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={primaryUrl} alt="Primary preview" className="size-full object-cover" />
+                <button
+                  type="button"
+                  aria-label="Remove image"
+                  onClick={() => setForm((p) => ({ ...p, primaryImage: null }))}
+                  className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-white text-[#0F172A] shadow hover:bg-rose-50 hover:text-rose-600"
+                >
+                  <X size={14} strokeWidth={2.5} />
+                </button>
+                <label className="absolute inset-x-0 bottom-0 cursor-pointer bg-black/50 py-1 text-center text-xs font-semibold text-white">
+                  Replace image
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e, 'primary')} />
+                </label>
+              </div>
+            ) : (
+              <label className="block cursor-pointer">
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e, 'primary')} />
+                <div
+                  className={`flex h-32 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed bg-[#F8FAFC] ${
+                    fieldErrors.primaryImage ? 'border-rose-400' : 'border-[#CBD5E1]'
+                  }`}
+                >
+                  <UploadCloud size={22} className="text-[#94A3B8]" />
+                  <span className="text-xs font-semibold text-[#475569]">Click to upload</span>
+                  <span className="text-xs text-[#94A3B8]">Main display image</span>
+                </div>
+              </label>
+            )}
+            {err(fieldErrors.primaryImage)}
+          </div>
+
+          <div>
+            <label className={labelCls}>
+              Gallery ({galleryCount}/{MAX_GALLERY})
+            </label>
+            <div className="flex min-h-32 flex-wrap content-start gap-2 rounded-xl border-2 border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-2.5">
+              {visibleExisting.map((u) => (
+                <Thumb key={u} src={u} onRemove={() => setRemovedGalleryUrls((p) => [...p, u])} />
+              ))}
+              {newGalleryUrls.map((u, i) => (
+                <Thumb
+                  key={u}
+                  src={u}
+                  onRemove={() => setForm((p) => ({ ...p, galleryImages: p.galleryImages.filter((_, j) => j !== i) }))}
+                />
+              ))}
+              {galleryCount < MAX_GALLERY && (
+                <label className="flex size-14 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#CBD5E1] bg-white text-[#94A3B8] hover:text-[#2563EB]">
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFile(e, 'gallery')} />
+                  {galleryCount === 0 ? <ImagePlus size={18} /> : <Images size={18} />}
+                </label>
+              )}
+            </div>
+            {err(galleryError ?? undefined)}
+          </div>
         </div>
       </div>
+    </ModalShell>
+  );
+}
+
+function Thumb({ src, onRemove }: { src: string; onRemove: () => void }) {
+  return (
+    <div className="relative size-14 overflow-hidden rounded-lg border border-[#E2E8F0]">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="Gallery" className="size-full object-cover" />
+      <button
+        type="button"
+        aria-label="Remove"
+        onClick={onRemove}
+        className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-white text-[#0F172A] shadow hover:text-rose-600"
+      >
+        <X size={10} strokeWidth={3} />
+      </button>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import TopAppBar from "./TopAppBar";
 import Sidebar from "./Sidebar";
@@ -11,9 +11,27 @@ export default function LayoutWrapper({
   children: ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem("magnify-sidebar-collapsed") === "1");
+    } catch {}
+  }, []);
+
+  const toggleCollapsed = () =>
+    setCollapsed((v) => {
+      try {
+        localStorage.setItem("magnify-sidebar-collapsed", v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
 
   return (
-    <div className="h-screen overflow-hidden bg-white">
+    <div
+      className="h-screen overflow-hidden bg-[#F8FAFD]"
+      style={{ ["--sb" as string]: collapsed ? "76px" : "252px" }}
+    >
       <TopAppBar onMenuClick={() => setSidebarOpen((v) => !v)} />
 
       {sidebarOpen && (
@@ -26,14 +44,16 @@ export default function LayoutWrapper({
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
       />
 
       <main
-        className="flex flex-col overflow-hidden lg:ml-[252px]"
+        className="dashboard-main flex flex-col overflow-y-auto lg:ml-[var(--sb)] transition-[margin] duration-300"
         style={{
-          marginTop: 89,
-          height: "calc(100vh - 89px)",
-          backgroundColor: "#FFFFFF",
+          marginTop: 64,
+          height: "calc(100vh - 64px)",
+          backgroundColor: "#F8FAFD",
         }}
       >
         {children}

@@ -1,52 +1,20 @@
 'use client';
 
-import { useState } from "react";
-import CustomerTable from "@/components/dashboard/Customer/CustomerTable";
-import AddCustomerModal from "@/components/dashboard/Customer/AddCustomerModal";
+import CustomerTable from '@/components/dashboard/Customer/CustomerTable';
 
 export default function CustomersPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [customerListVersion, setCustomerListVersion] = useState(0);
-  const [customerStatsVersion, setCustomerStatsVersion] = useState(0);
-
-  const openAddCustomerForm = () => setIsModalOpen(true);
-  const refreshCustomerStats = () => {
-    setCustomerStatsVersion((version) => version + 1);
-  };
-
   return (
-    <div className="h-full w-full overflow-y-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
-      {/* Heading row with Add Customer button inline - single row */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
-        <h1 className="text-[26px] sm:text-[28px] font-bold leading-tight text-[#002B73]">
-          Customer Management
+    <div className="compact-ui relative mx-auto flex min-h-full w-full max-w-7xl flex-col px-3 pb-4 pt-2 sm:px-6 sm:pt-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:px-8 lg:pb-4 lg:pt-4">
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold tracking-tight text-[#071C40] sm:text-[28px]">
+          Customers Management
         </h1>
+        <p className="mt-0.5 text-xs text-[#64748B]">
+          View, add and manage your customer directory.
+        </p>
       </div>
 
-      <div className="flex justify-end pb-3 pt-2">
-        <button
-          type="button"
-          onClick={openAddCustomerForm}
-          className="whitespace-nowrap flex-shrink-0 rounded-lg bg-[#b91c1c] px-5 py-2.5 text-sm sm:text-[15px] font-bold text-white shadow-sm hover:bg-[#991b1b] transition-colors"
-        >
-          + Add Customer
-        </button>
-      </div>
-
-      <CustomerTable
-        key={`customer-table-${customerListVersion}`}
-        onCustomersChanged={refreshCustomerStats}
-      />
-
-      <AddCustomerModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={() => {
-          setIsModalOpen(false);
-          setCustomerListVersion((version) => version + 1);
-          refreshCustomerStats();
-        }}
-      />
+      <CustomerTable />
     </div>
   );
 }

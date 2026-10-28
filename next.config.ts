@@ -30,6 +30,9 @@ const nextConfig: NextConfig = {
   },
 
   devIndicators: false,
+  poweredByHeader: false,
+  compress: true,
+  reactStrictMode: true,
 
   async rewrites() {
     const backendUrl =

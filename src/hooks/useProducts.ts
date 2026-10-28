@@ -16,6 +16,10 @@ type ApiProduct = {
   productName?: string;
   category?: string;
   price?: number;
+  manufactureCost?: number;
+  unitCost?: number;
+  costPrice?: number;
+  isActive?: boolean;
   stock?: number;
   imagecount?: number;   // <-- ADD THIS
   status?: string;
@@ -24,6 +28,9 @@ type ApiProduct = {
   description?: string;
   updatedAt?: string;
 };
+
+// Two demo products, shown only while the database has none (or the API is unreachable).
+const DEMO_PRODUCTS: ApiProduct[] = [];
 
 const toStockStatus = (status?: string, stock = 0): Product['stockStatus'] => {
   if (status === 'Out of Stock' || stock <= 0) return 'out-of-stock';
@@ -40,6 +47,9 @@ const mapProduct = (product: ApiProduct): Product => {
     name: product.productName || 'Untitled product',
     series: product.category?.trim() || '',
     price: Number(product.price ?? 0),
+    manufactureCost: Number(product.manufactureCost ?? product.unitCost ?? product.costPrice ?? 0),
+    // Disabled manually (isActive false) or automatically when there is no stock.
+    isActive: product.isActive !== false && stockCount > 0,
     imagecount: Number(product.imagecount ?? 0), // <-- ADD THIS
     stockCount,
     stockStatus: toStockStatus(product.status, stockCount),
@@ -93,15 +103,17 @@ export const useProducts = () => {
       });
 
       if (!res.ok) {
-        setProducts([]);
+        setProducts(DEMO_PRODUCTS.map(mapProduct));
         return;
       }
 
       const data = await res.json();
+      const list = getProductsFromResponse(data);
 
-      setProducts(getProductsFromResponse(data).map(mapProduct));
+      setProducts((list.length ? list : DEMO_PRODUCTS).map(mapProduct));
     } catch (error) {
       console.error('Failed to fetch products', error);
+      setProducts(DEMO_PRODUCTS.map(mapProduct));
     } finally {
       setIsLoaded(true);
     }

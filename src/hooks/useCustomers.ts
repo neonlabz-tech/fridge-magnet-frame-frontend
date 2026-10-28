@@ -25,6 +25,8 @@ type RawCustomer = {
   recordId?: string;
 };
 
+const DEMO_CUSTOMERS: RawCustomer[] = [];
+
 const getInitials = (name: string) =>
   name
     .split(' ')
@@ -68,7 +70,7 @@ export const useCustomers = () => {
   const [page, setPage] = useState(1);
   // The customer directory design shows four complete rows per page so the
   // table footer and pagination remain visible inside the dashboard viewport.
-  const [limit] = useState(6);
+  const [limit] = useState(8);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
@@ -77,12 +79,13 @@ export const useCustomers = () => {
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/customers?page=${currentPage}&limit=${limit}`, {
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(1500)
       });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const json: CustomerApiResponse = await res.json();
 
-      const enriched = (json.data || []).map(mapCustomer);
+      const isDemo = !(json.data && json.data.length);
+      const enriched = (isDemo ? DEMO_CUSTOMERS : json.data).map(mapCustomer);
       let activeTotal =
         typeof json.activeTotal === 'number'
           ? json.activeTotal
@@ -90,7 +93,7 @@ export const useCustomers = () => {
 
       if (typeof json.activeTotal !== 'number') {
         const allRes = await fetch(`${API_BASE}/customers?page=1&limit=10000`, {
-          signal: AbortSignal.timeout(3000),
+          signal: AbortSignal.timeout(1500),
         });
 
         if (allRes.ok) {
@@ -108,19 +111,20 @@ export const useCustomers = () => {
       }).length;
 
       setCustomers(enriched);
-      setTotal(json.total);
-      setTotalPages(json.totalPages);
+      setTotal(isDemo ? enriched.length : json.total);
+      setTotalPages(isDemo ? 1 : json.totalPages);
       setStats({
         totalActiveCustomers: activeTotal,
         satisfactionRate: json.total > 0 ? 100 : 0,
         newToday,
       });
     } catch {
-      setCustomers([]);
-      setTotal(0);
-      setTotalPages(0);
+      const demo = DEMO_CUSTOMERS.map(mapCustomer);
+      setCustomers(demo);
+      setTotal(demo.length);
+      setTotalPages(1);
       setStats({
-        totalActiveCustomers: 0,
+        totalActiveCustomers: demo.length,
         satisfactionRate: 0,
         newToday: 0,
       });
