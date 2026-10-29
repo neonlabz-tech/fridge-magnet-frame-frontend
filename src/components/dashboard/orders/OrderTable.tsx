@@ -1,6 +1,8 @@
 'use client';
 
-import { Eye, CreditCard, Banknote, Building2 } from 'lucide-react';
+import { useState } from 'react';
+import { Eye, CreditCard, Banknote, Building2, Tag, Receipt, Loader2 } from 'lucide-react';
+import { apiV1Url } from '@/lib/backendUrl';
 import type { Order } from '@/types/order';
 
 interface OrderTableProps {
@@ -10,6 +12,8 @@ interface OrderTableProps {
   onToggleSelectAll: (checked: boolean) => void;
   onToggleSelectOne: (id: string) => void;
   onView: (order: Order) => void;
+  /** Opens the shipping label (print / save as PDF). */
+  onShippingLabel?: (order: Order) => void;
   /** Orders can no longer be deleted from the table (unsafe); kept optional so callers need no change. */
   onDelete?: (order: Order) => void;
 }
@@ -111,7 +115,32 @@ export default function OrderTable({
   onToggleSelectAll,
   onToggleSelectOne,
   onView,
+  onShippingLabel,
 }: OrderTableProps) {
+  const [billLoadingId, setBillLoadingId] = useState<string | null>(null);
+
+  const downloadBill = async (order: Order) => {
+    if (billLoadingId) return;
+    setBillLoadingId(order.orderId);
+    try {
+      const res = await fetch(apiV1Url(`/orders/${encodeURIComponent(order.orderId)}/receipt`));
+      if (!res.ok) throw new Error('Receipt download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `receipt-${order.orderId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Could not download the bill. Please try again.');
+    } finally {
+      setBillLoadingId(null);
+    }
+  };
+
   const isAllSelected = orders.length > 0 && orders.every((o) => selectedIds.has(o.id));
 
   return (
@@ -313,6 +342,38 @@ export default function OrderTable({
                       >
                         <Eye size={14} />
                       </button>
+                      {onShippingLabel && (
+                        <button
+                          type="button"
+                          onClick={() => onShippingLabel(order)}
+                          className="flex size-7 items-center justify-center rounded-lg border border-[#E2E8F0] bg-white text-[#475569] transition hover:border-[#2563EB] hover:bg-blue-50 hover:text-[#2563EB]"
+                          title="Download shipping label"
+                          aria-label={`Shipping label for ${order.orderId}`}
+                        >
+                          <Tag size={14} />
+                        </button>
+                      )}
+                      {(() => {
+                        const isDelivered = ['delivered', 'completed'].includes(
+                          String(order.status || '').toLowerCase(),
+                        );
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => isDelivered && downloadBill(order)}
+                            disabled={!isDelivered || billLoadingId === order.orderId}
+                            className="flex size-7 items-center justify-center rounded-lg border border-[#E2E8F0] bg-white text-[#475569] transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#E2E8F0] disabled:hover:bg-white disabled:hover:text-[#475569]"
+                            title={isDelivered ? 'Download bill' : 'Bill is available once the order is delivered'}
+                            aria-label={`Download bill for ${order.orderId}`}
+                          >
+                            {billLoadingId === order.orderId ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Receipt size={14} />
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </td>
                 </tr>

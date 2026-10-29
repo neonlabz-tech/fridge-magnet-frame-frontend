@@ -7,6 +7,7 @@ import type { DemoSession } from '@/lib/demoAuth';
 import { useToastStore } from '@/store/toastStore';
 import { ConfirmModal, TableFooter, btnGhost, btnPrimary, inputCls } from '@/components/dashboard/shared/UiKit';
 import { Skeleton } from '@/components/dashboard/shared/Skeleton';
+import DirectOrderModal from '@/components/dashboard/orders/DirectOrderModal';
 import {
   DEFAULT_TARGET,
   SOURCES,
@@ -72,6 +73,8 @@ export default function LeadsView() {
   const [profile, setProfile] = useState<{ lead: Lead; isNew: boolean } | null>(null);
   const [deleting, setDeleting] = useState<Lead | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // Lead that was just converted: opens the Direct Order popup with the client's details.
+  const [orderFor, setOrderFor] = useState<Lead | null>(null);
 
   const isAdmin = session?.role === 'admin';
   const me = session?.username ?? '';
@@ -188,11 +191,15 @@ export default function LeadsView() {
   const saveProfile = async ({ lead: v, converting }: ProfileSave) => {
     const isNew = profile?.isNew;
     const now = new Date().toISOString();
+    const converted: { lead: Lead | null } = { lead: null };
     const ok = await mutate((all) => {
       if (isNew) {
         const id = all.some((l) => l.id === v.id) ? nextLeadId(all) : v.id;
         let lead: Lead = { ...v, id, owner: isAdmin ? v.owner : me };
-        if (converting) lead = applySale(lead, all);
+        if (converting) {
+          lead = applySale(lead, all);
+          converted.lead = lead;
+        }
         return [lead, ...all];
       }
       return all.map((l) => {
@@ -204,13 +211,17 @@ export default function LeadsView() {
             history: [...next.history, { n: 0, at: now, by: 'admin', callStatus: '', result: '', product: '', nextFollowUp: '', system: true, notes: `Reassigned from ${l.owner ? nameOf(l.owner) : 'Unassigned'} to ${v.owner ? nameOf(v.owner) : 'Unassigned'}.` }],
           };
         }
-        if (converting) next = applySale(next, all);
+        if (converting) {
+          next = applySale(next, all);
+          converted.lead = next;
+        }
         return next;
       });
     }, isNew ? 'Lead added.' : 'Lead saved.');
     if (!ok) return;
     if (isNew) setPage(1);
     setProfile(null);
+    if (converted.lead) setOrderFor(converted.lead);
   };
 
   const applySale = (l: Lead, all: Lead[]): Lead => {
@@ -389,6 +400,24 @@ export default function LeadsView() {
           <TableFooter page={safePage} pageSize={PAGE_SIZE} total={filtered.length} noun="leads" onPage={setPage} />
         </section>
       )}
+
+      <DirectOrderModal
+        isOpen={!!orderFor}
+        prefill={
+          orderFor
+            ? {
+                name: orderFor.business,
+                phone: orderFor.phone,
+                email: orderFor.email,
+                address: orderFor.address,
+                clientId: orderFor.customerId,
+                products: orderFor.product.split(',').map((x) => x.trim()).filter(Boolean),
+              }
+            : null
+        }
+        onClose={() => setOrderFor(null)}
+        onOrderCreated={() => undefined}
+      />
 
       <LeadProfileModal
         open={!!profile}
