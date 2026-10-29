@@ -185,21 +185,21 @@ export default function TopAppBar({
       <header className="topappbar fixed top-0 right-0 z-40 flex items-center justify-between px-4 sm:px-6 left-0 lg:left-[var(--sb,252px)]">
         <button
           onClick={onMenuClick}
-          className="flex size-9 items-center justify-center rounded-lg transition hover:bg-slate-100 lg:hidden"
+          className="flex size-11 sm:size-9 items-center justify-center rounded-lg transition hover:bg-slate-100 lg:hidden"
           aria-label="Toggle menu"
         >
-          <Menu size={20} color="#475569" />
+          <Menu className="size-7 sm:size-5" color="#475569" />
         </button>
 
         <div className="flex items-center gap-2.5 sm:gap-4 ml-auto">
           <div className="relative" ref={bellRef}>
             <button
               onClick={handleBellClick}
-              className="flex size-9 items-center justify-center rounded-full transition hover:bg-slate-100"
+              className="flex size-11 sm:size-9 items-center justify-center rounded-full transition hover:bg-slate-100"
               aria-label="Notifications"
               aria-expanded={open}
             >
-              <Bell size={18} color={open ? "#002B73" : "#64748B"} />
+              <Bell className="size-6 sm:size-[18px]" color={open ? "#002B73" : "#64748B"} />
               {unreadCount > 0 && (
                 <span
                   className="absolute -top-0.5 -right-0.5 flex items-center justify-center rounded-full bg-red-500 text-white font-bold"
