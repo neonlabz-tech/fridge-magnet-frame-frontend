@@ -14,7 +14,6 @@ import {
   Undo2,
 } from 'lucide-react';
 import type { Delivery, DeliveryStatus } from '@/types/delivery';
-import { DRIVERS } from '@/data/deliveries';
 import { readDeliveries, refreshDeliveries, saveDelivery, deleteDelivery } from '@/lib/deliveryStore';
 import { useToastStore } from '@/store/toastStore';
 import { ConfirmModal, TableFooter, downloadCsv } from '@/components/dashboard/shared/UiKit';
@@ -84,6 +83,12 @@ export default function DeliveriesView() {
   const [bulkDelete, setBulkDelete] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
 
+  // Only drivers that have actually been assigned to a delivery.
+  const driverOptions = useMemo(
+    () => Array.from(new Set(deliveries.map((d) => (d.driver || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [deliveries],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return deliveries.filter((d) => {
@@ -113,6 +118,19 @@ export default function DeliveriesView() {
       addToast(isNew ? `Delivery ${saved.id} dispatched.` : `Delivery ${saved.id} updated.`, 'success');
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'Could not save delivery.', 'error');
+    }
+  };
+
+  const handleSaveMany = async (list: Delivery[]) => {
+    const created: Delivery[] = [];
+    try {
+      for (const d of list) created.push(await saveDelivery(d, true));
+      setModal(null);
+      addToast(`${created.length} deliveries dispatched.`, 'success');
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Could not save all deliveries.', 'error');
+    } finally {
+      if (created.length) setDeliveries((prev) => [...created, ...prev.filter((x) => !created.some((c) => c.id === x.id))]);
     }
   };
 
@@ -240,7 +258,7 @@ export default function DeliveriesView() {
               </Select>
               <Select value={driverFilter} onChange={(v) => { setDriverFilter(v); resetPage(); }}>
                 <option value="all">All Drivers</option>
-                {DRIVERS.map((d) => (
+                {driverOptions.map((d) => (
                   <option key={d}>{d}</option>
                 ))}
               </Select>
@@ -427,6 +445,7 @@ export default function DeliveriesView() {
         nextSequence={nextSequence}
         onClose={() => setModal(null)}
         onSave={handleSave}
+        onSaveMany={handleSaveMany}
         onEditRequest={(d) => setModal({ mode: 'edit', delivery: d })}
       />
 

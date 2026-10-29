@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Customer, CustomerStats, CustomerApiResponse } from '@/types/customer';
 
-// Use a relative API base so the frontend calls the same origin the app is served from.
-// This avoids port mismatches during `next dev` where Next may switch ports.
-const API_BASE = '/api/v1';
+// Same backend URL the other dashboard pages use (NEXT_PUBLIC_BACKEND_URL), with /api/v1 as local fallback.
+const API_BASE = (process.env.NEXT_PUBLIC_BACKEND_URL || '/api/v1').replace(/\/$/, '');
 
 type RawCustomer = {
   _id?: string;

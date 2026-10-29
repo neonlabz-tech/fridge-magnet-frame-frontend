@@ -56,7 +56,7 @@ interface CatalogProduct {
   subtitle?: string;
 }
 
-const API_BASE = '/api/v1';
+const API_BASE = (process.env.NEXT_PUBLIC_BACKEND_URL || '/api/v1').replace(/\/$/, '');
 
 const FALLBACK_PRODUCTS: CatalogProduct[] = [
   { productId: 'P-101', sku: 'MG-01', name: 'Square Magnet - Pack of 6', price: 2700, subtitle: 'Square magnet' },

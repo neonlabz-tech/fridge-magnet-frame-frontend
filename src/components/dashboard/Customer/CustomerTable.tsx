@@ -20,6 +20,7 @@ import AddCustomerModal from './AddCustomerModal';
 import ViewCustomerModal from './ViewCustomerModal';
 import DeactivateCustomerModal from './DeactivateCustomerModal';
 import CustomerOrdersModal from './CustomerOrdersModal';
+import { apiV1Url } from '@/lib/backendUrl';
 import {
   type CustomerRow,
   avatarStyle,
@@ -100,7 +101,7 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
   const fetchAllCustomers = async () => {
     setAllCustomersLoading(true);
     try {
-      const res = await fetch('/api/v1/customers?page=1&limit=10000');
+      const res = await fetch(apiV1Url('/customers?page=1&limit=10000'));
       if (!res.ok) throw new Error('Unable to load all customers');
       const data = await res.json();
       const list = extractCustomers(data).map(normalizeCustomer);
@@ -174,7 +175,7 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
     setUpdatingStatusId(customer.id);
     setStatusError(null);
     try {
-      const res = await fetch(`/api/v1/customers/${customer.recordId}/status`, {
+      const res = await fetch(apiV1Url(`/customers/${customer.recordId}/status`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: !customer.isActive, source: customer.source }),

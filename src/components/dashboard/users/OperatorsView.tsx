@@ -446,7 +446,7 @@ export default function OperatorsView() {
           </div>
           <div>
             <label className={labelCls}>Role</label>
-            <select className={inputCls} value={form.role} disabled={!!editing} onChange={(e) => set('role', e.target.value)}>
+            <select className={`${inputCls} ${editing ? 'appearance-none' : ''}`} value={form.role} disabled={!!editing} onChange={(e) => set('role', e.target.value)}>
               {roles.map((r) => (
                 <option key={r.id} value={r.name}>{r.name}</option>
               ))}
