@@ -19,6 +19,7 @@ import { useCustomers } from '@/hooks/useCustomers';
 import AddCustomerModal from './AddCustomerModal';
 import ViewCustomerModal from './ViewCustomerModal';
 import DeactivateCustomerModal from './DeactivateCustomerModal';
+import CustomerOrdersModal from './CustomerOrdersModal';
 import {
   type CustomerRow,
   avatarStyle,
@@ -82,6 +83,7 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
   const [editingCustomer, setEditingCustomer] = useState<CustomerRow | null>(null);
   const [viewingCustomer, setViewingCustomer] = useState<CustomerRow | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<CustomerRow | null>(null);
+  const [ordersTarget, setOrdersTarget] = useState<CustomerRow | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -387,9 +389,15 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
 
                       {/* Total orders */}
                       <td className="px-5 py-3.5 text-center">
-                        <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-[#F1F5F9] px-2 py-0.5 text-xs font-bold text-[#334155]">
+                        <button
+                          type="button"
+                          onClick={() => c.totalOrders > 0 && setOrdersTarget(c)}
+                          disabled={!c.totalOrders}
+                          title={c.totalOrders ? 'View order IDs' : 'No orders'}
+                          className="inline-flex min-w-7 items-center justify-center rounded-full bg-[#F1F5F9] px-2 py-0.5 text-xs font-bold text-[#334155] transition enabled:cursor-pointer enabled:hover:bg-blue-100 enabled:hover:text-[#1D4ED8] disabled:cursor-default"
+                        >
                           {c.totalOrders}
-                        </span>
+                        </button>
                       </td>
 
                       {/* Actions */}
@@ -504,6 +512,9 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
           if (c.isActive) setEditingCustomer(c);
         }}
       />
+
+      {/* Customer order IDs */}
+      <CustomerOrdersModal customer={ordersTarget} onClose={() => setOrdersTarget(null)} />
 
       {/* Deactivate */}
       <DeactivateCustomerModal

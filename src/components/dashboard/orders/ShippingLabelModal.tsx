@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import Image from 'next/image';
 import { Printer, X } from 'lucide-react';
 import type { Order } from '@/types/order';
@@ -8,6 +9,8 @@ interface ShippingLabelModalProps {
   order: Order | null;
   isOpen: boolean;
   onClose: () => void;
+  /** Open the print dialog (Save as PDF) straight away. */
+  autoPrint?: boolean;
 }
 
 // Integrated vector icons (black rounded container + white symbol)
@@ -108,7 +111,13 @@ function IconHome() {
   );
 }
 
-export default function ShippingLabelModal({ order, isOpen, onClose }: ShippingLabelModalProps) {
+export default function ShippingLabelModal({ order, isOpen, onClose, autoPrint }: ShippingLabelModalProps) {
+  useEffect(() => {
+    if (!autoPrint || !isOpen || !order) return;
+    const t = setTimeout(() => window.print(), 500);
+    return () => clearTimeout(t);
+  }, [autoPrint, isOpen, order]);
+
   if (!isOpen || !order) return null;
 
   const handlePrint = () => {

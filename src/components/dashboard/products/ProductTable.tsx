@@ -49,8 +49,8 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onT
               const cost = mats.some((m) => m.qty > 0) ? materialCost(mats, inventory) : Number(p.manufactureCost ?? 0);
               const profit = p.price - cost;
               const depleted = p.stockCount <= 0;
-              const images =
-                Number(p.imagecount) || (p.galleryImageUrls?.length ?? 0) + (p.primaryImageUrl ? 1 : 0);
+              // Customer upload count only (0 = no photos needed).
+              const images = Number(p.imagecount) || 0;
               const active = p.isActive !== false && !depleted ? true : Boolean(p.isActive);
 
               return (

@@ -48,6 +48,7 @@ export default function LeadProfileModal({
   const [customName, setCustomName] = useState('');
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
   const [err, setErr] = useState('');
+  const [fe, setFe] = useState<{ business?: string; phone?: string; email?: string }>({});
 
   // new / edit history record form
   const [rec, setRec] = useState<{ index: number | null; callStatus: string; result: string; notes: string; next: string } | null>(null);
@@ -78,6 +79,7 @@ export default function LeadProfileModal({
     setCustomName('');
     setConfirmDel(null);
     setErr('');
+    setFe({});
     setRec(null);
   }, [open, lead]);
 
@@ -96,6 +98,7 @@ export default function LeadProfileModal({
   };
   const set = <K extends keyof Lead>(k: K, v: Lead[K]) => {
     setErr('');
+    if (k === 'business' || k === 'phone' || k === 'email') setFe((p) => ({ ...p, [k]: undefined }));
     setD((p) => (p ? { ...p, [k]: v } : p));
   };
 
@@ -148,9 +151,16 @@ export default function LeadProfileModal({
   };
 
   const submit = () => {
-    if (!d.business.trim()) return setErr('Business / customer name is required.');
-    if (!/^\d{10}$/.test(d.phone.trim())) return setErr('Phone number must be exactly 10 digits (e.g. 0771234567).');
-    if (d.email.trim() && !/^\S+@\S+\.\S+$/.test(d.email.trim())) return setErr('Enter a valid email address.');
+    const errors: { business?: string; phone?: string; email?: string } = {};
+    if (!d.business.trim()) errors.business = 'Business / customer name is required.';
+    if (!d.phone.trim()) errors.phone = 'Phone number is required.';
+    else if (!/^\d{10}$/.test(d.phone.trim())) errors.phone = 'Phone number must be exactly 10 digits (e.g. 0771234567).';
+    if (d.email.trim() && !/^\S+@\S+\.\S+$/.test(d.email.trim())) errors.email = 'Enter a valid email address.';
+    setFe(errors);
+    if (Object.keys(errors).length) {
+      setErr('Please fix the highlighted fields.');
+      return;
+    }
     if (rec) return setErr('Save or cancel the call record you are editing first.');
     onSave({ lead: { ...d, business: d.business.trim(), phone: d.phone.trim(), email: d.email.trim(), address: d.address.trim(), notes: d.notes.trim() }, converting: becomingConverted });
   };
@@ -191,20 +201,27 @@ export default function LeadProfileModal({
             <input className={inputCls} value={fmtDate(d.dateAdded)} disabled />
           </div>
           <div>
-            <label className={labelCls}>Business / Customer name</label>
-            <input className={inputCls} value={d.business} placeholder="e.g. ABC Restaurant" onChange={(e) => set('business', e.target.value)} />
+            <label className={labelCls}>Business / Customer name <span className="text-rose-600">*</span></label>
+            <input className={inputCls} style={fe.business ? { borderColor: '#F43F5E' } : undefined} aria-invalid={Boolean(fe.business)} value={d.business} placeholder="e.g. ABC Restaurant" onChange={(e) => set('business', e.target.value)} />
+            {fe.business && <p className="mt-1 text-xs font-medium text-rose-600">{fe.business}</p>}
           </div>
           <div>
-            <label className={labelCls}>Phone</label>
+            <label className={labelCls}>Phone <span className="text-rose-600">*</span></label>
             <input
               className={inputCls}
+              style={fe.phone ? { borderColor: '#F43F5E' } : undefined}
+              aria-invalid={Boolean(fe.phone)}
               value={d.phone}
               inputMode="numeric"
               maxLength={10}
               placeholder="0771234567"
               onChange={(e) => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
             />
-            <p className={`mt-1 text-xs ${d.phone && d.phone.length !== 10 ? 'text-rose-600' : 'text-[#94A3B8]'}`}>{d.phone.length}/10 digits</p>
+            {fe.phone ? (
+              <p className="mt-1 text-xs font-medium text-rose-600">{fe.phone}</p>
+            ) : (
+              <p className={`mt-1 text-xs ${d.phone && d.phone.length !== 10 ? 'text-rose-600' : 'text-[#94A3B8]'}`}>{d.phone.length}/10 digits</p>
+            )}
           </div>
           <div>
             <label className={labelCls}>Source</label>
@@ -278,7 +295,8 @@ export default function LeadProfileModal({
           </div>
           <div>
             <label className={labelCls}>Email</label>
-            <input type="email" className={inputCls} value={d.email} placeholder="contact@example.com" onChange={(e) => set('email', e.target.value)} />
+            <input type="email" className={inputCls} style={fe.email ? { borderColor: '#F43F5E' } : undefined} aria-invalid={Boolean(fe.email)} value={d.email} placeholder="contact@example.com" onChange={(e) => set('email', e.target.value)} />
+            {fe.email && <p className="mt-1 text-xs font-medium text-rose-600">{fe.email}</p>}
           </div>
           <div>
             <label className={labelCls}>Address</label>

@@ -94,6 +94,7 @@ export const mapApiOrder = (order: ApiOrder): Order => {
     status: statusFromApi(order.status),
     paymentStatus: (rawAny.paymentStatus as any) || (order.status === "delivered" ? "paid" : "pending"),
     paymentMethod: (rawAny.paymentMethod as string) || "Card",
+    paymentSlipUrl: (rawAny.paymentSlipUrl as string) || undefined,
     preferredLanguage: (rawAny.preferredLanguage as "Tamil" | "English") || "Tamil",
     allPhotosReceived: (rawAny.allPhotosReceived as boolean) ?? true,
     email: order.email,

@@ -79,7 +79,7 @@ export const useCustomers = () => {
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/customers?page=${currentPage}&limit=${limit}`, {
-        signal: AbortSignal.timeout(1500)
+        signal: AbortSignal.timeout(20000)
       });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const json: CustomerApiResponse = await res.json();
@@ -93,7 +93,7 @@ export const useCustomers = () => {
 
       if (typeof json.activeTotal !== 'number') {
         const allRes = await fetch(`${API_BASE}/customers?page=1&limit=10000`, {
-          signal: AbortSignal.timeout(1500),
+          signal: AbortSignal.timeout(20000),
         });
 
         if (allRes.ok) {
@@ -118,7 +118,9 @@ export const useCustomers = () => {
         satisfactionRate: json.total > 0 ? 100 : 0,
         newToday,
       });
-    } catch {
+    } catch (err) {
+      console.error('Failed to load customers:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load customers');
       const demo = DEMO_CUSTOMERS.map(mapCustomer);
       setCustomers(demo);
       setTotal(demo.length);

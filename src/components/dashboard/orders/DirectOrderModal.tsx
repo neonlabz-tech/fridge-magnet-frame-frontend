@@ -18,10 +18,22 @@ import { useToastStore } from '@/store/toastStore';
 import { useProducts } from '@/hooks/useProducts';
 import { mapApiOrder } from '@/lib/orders';
 
+/** Pre-filled customer, used when a lead is converted into a client. */
+export interface DirectOrderPrefill {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  clientId?: string;
+  /** Product names (as stored on the lead) to add to the order. */
+  products?: string[];
+}
+
 interface DirectOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOrderCreated: (newOrder: Order) => void;
+  prefill?: DirectOrderPrefill | null;
 }
 
 type PaymentMethod = 'Cash' | 'Card Payment' | 'Bank Transfer';
@@ -62,6 +74,7 @@ export default function DirectOrderModal({
   isOpen,
   onClose,
   onOrderCreated,
+  prefill,
 }: DirectOrderModalProps) {
   const { addToast } = useToastStore();
   const { products } = useProducts();
@@ -126,6 +139,21 @@ export default function DirectOrderModal({
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
+  // Lead conversion: pre-fill the customer (and products) every time the modal opens for a lead.
+  const prefillProductsDone = useRef(false);
+  useEffect(() => {
+    if (!isOpen || !prefill) return;
+    setCustomerQuery(prefill.name);
+    setSelectedCustomerId(null);
+    setPhone(prefill.phone);
+    setEmail(prefill.email);
+    setSelectedItems([]);
+    setProductQuery('');
+    setPaymentNote('');
+    setSaveToDirectory(true);
+    prefillProductsDone.current = false;
+  }, [isOpen, prefill]);
+
   const catalog: CatalogProduct[] = useMemo(() => {
     if (!products.length) return FALLBACK_PRODUCTS;
     return products.map((p) => ({
@@ -137,6 +165,26 @@ export default function DirectOrderModal({
       subtitle: p.series || undefined,
     }));
   }, [products]);
+
+  // Add the lead's products once the catalog has loaded (matched by name, quantity 1).
+  useEffect(() => {
+    if (!isOpen || !prefill?.products?.length || prefillProductsDone.current) return;
+    if (!products.length) return; // wait for the real catalog
+    const wanted = prefill.products.map((n) => n.trim().toLowerCase()).filter(Boolean);
+    const found = catalog.filter((p) => wanted.includes(p.name.trim().toLowerCase()));
+    prefillProductsDone.current = true;
+    if (!found.length) return;
+    setSelectedItems(
+      found.map((p) => ({
+        productId: p.productId,
+        sku: p.sku,
+        name: p.name,
+        price: p.price,
+        quantity: 1,
+        image: p.image,
+      })),
+    );
+  }, [isOpen, prefill, products.length, catalog]);
 
   const matchedCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -250,13 +298,13 @@ export default function DirectOrderModal({
         body: JSON.stringify({
           orderId: `#${orderNo}`,
           customerName: name,
-          customerId: selectedCustomerId || `C-${Math.floor(10000 + Math.random() * 90000)}`,
+          customerId: prefill?.clientId || selectedCustomerId || `C-${Math.floor(10000 + Math.random() * 90000)}`,
           email: email.trim(),
           phone: phone.trim(),
           qty: itemCount,
           totalValue: totalAmount,
           deliveryFee: 0,
-          shippingAddress: '',
+          shippingAddress: prefill?.address?.trim() || '',
           adminNote: paymentNote.trim(),
           paymentMethod,
           paymentStatus: 'paid',
@@ -333,6 +381,11 @@ export default function DirectOrderModal({
               <section className="rounded-xl border border-[#E2E8F0] bg-white p-4">
                 <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#64748B]">
                   <Users size={13} /> Customer Details
+                  {prefill?.clientId && (
+                    <span className="ml-auto rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal text-emerald-700">
+                      Client ID: {prefill.clientId}
+                    </span>
+                  )}
                 </h3>
 
                 <label className={labelCls}>

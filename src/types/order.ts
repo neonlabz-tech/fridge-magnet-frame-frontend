@@ -25,6 +25,8 @@ export interface Order {
   status: OrderStatus;
   paymentStatus?: PaymentStatus;
   paymentMethod?: string;
+  /** Bank transfer receipt uploaded by the customer (Cloudflare R2 receipts/ folder). */
+  paymentSlipUrl?: string;
   preferredLanguage?: 'Tamil' | 'English' | string;
   allPhotosReceived?: boolean;
   email?: string;
