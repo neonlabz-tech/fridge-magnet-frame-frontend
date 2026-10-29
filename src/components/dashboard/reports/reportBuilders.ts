@@ -1,6 +1,6 @@
 import type { Order } from '@/types/order';
 import type { ReportDoc, Cell, Tone } from './reportPdf';
-import { INITIAL_INVENTORY } from '@/data/inventory';
+import { readInventory, refreshInventory } from '@/lib/inventoryStore';
 import { getInventoryStatus } from '@/types/inventory';
 import { readDeliveries, refreshDeliveries } from '@/lib/deliveryStore';
 import { readTransactions, refreshTransactions } from '@/components/dashboard/finance/financeStore';
@@ -56,17 +56,29 @@ const arr = (j: unknown): unknown[] => {
   return [];
 };
 
+async function fetchCustomersAll(): Promise<RawCustomer[]> {
+  const url = apiV1Url('/customers?page=1&limit=10000');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(30000) });
+      if (!r.ok) throw new Error(`Server error: ${r.status}`);
+      return arr(await r.json()) as RawCustomer[];
+    } catch (err) {
+      console.error('Report: failed to load customers', err);
+    }
+  }
+  return [];
+}
+
 export async function loadReportData(): Promise<ReportData> {
-  const [, , , , orders, customers, products] = await Promise.all([
+  const [, , , , , orders, customers, products] = await Promise.all([
+    refreshInventory().catch(() => null),
     refreshTransactions().catch(() => null),
     refreshDeliveries().catch(() => null),
     refreshLeads().catch(() => null),
     refreshTeam().catch(() => null),
     fetchOrders().catch(() => [] as Order[]),
-    fetch('/api/v1/customers?page=1&limit=10000')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((j) => arr(j) as RawCustomer[])
-      .catch(() => [] as RawCustomer[]),
+    fetchCustomersAll(),
     fetch(apiV1Url('/products?page=1&limit=1000'), { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : []))
       .then((j) => arr(j) as RawProduct[])
@@ -199,7 +211,8 @@ function product(d: ReportData, r: Range): ReportDoc {
   const ranked = [...list].sort((a, b) => b.amount - a.amount);
   const totalUnits = list.reduce((s, p) => s + p.units, 0);
   const totalRev = list.reduce((s, p) => s + p.amount, 0);
-  const totalProfit = list.reduce((s, p) => s + p.profit * p.units, 0);
+  const totalCost = list.reduce((s, p) => s + p.cost * p.units, 0);
+  const totalProfit = totalRev - totalCost;
 
   return {
     title: 'Product Performance Report',
@@ -219,40 +232,41 @@ function product(d: ReportData, r: Range): ReportDoc {
       {
         type: 'table',
         columns: [
-          { header: 'Product', w: 4.5 },
-          { header: 'SKU', w: 1.8 },
-          { header: 'Units', w: 1.2, align: 'right' },
-          { header: 'Revenue', w: 2.2, align: 'right' },
-          { header: 'Stock', w: 1.2, align: 'right' },
-        ],
-        rows: ranked.map((p) => [p.name, p.sku, p.units, lkr(p.amount), { text: p.stock, tone: (p.stock <= 0 ? 'bad' : p.stock <= 10 ? 'warn' : 'good') as Tone }]),
-        empty: 'No products found.',
-      },
-      { type: 'section', title: 'Unit economics & margin analysis' },
-      {
-        type: 'table',
-        columns: [
-          { header: 'Product', w: 4 },
+          { header: 'Product', w: 3.6 },
+          { header: 'SKU', w: 1.5 },
+          { header: 'Units', w: 1, align: 'right' },
+          { header: 'Revenue', w: 2, align: 'right' },
           { header: 'Mfg cost', w: 2, align: 'right' },
-          { header: 'Selling price', w: 2, align: 'right' },
-          { header: 'Unit profit', w: 2, align: 'right' },
-          { header: 'Margin', w: 1.4, align: 'right' },
+          { header: 'Profit', w: 2, align: 'right' },
+          { header: 'Stock', w: 1, align: 'right' },
         ],
         rows: ranked.map((p) => [
           p.name,
-          lkr(p.cost),
-          lkr(p.price),
-          { text: lkr(p.profit), bold: true },
-          { text: pct(p.profit, p.price), tone: (p.profit >= 0 ? 'good' : 'bad') as Tone },
+          p.sku,
+          p.units,
+          lkr(p.amount),
+          lkr(p.cost * p.units),
+          { text: lkr(p.amount - p.cost * p.units), bold: true, tone: (p.amount - p.cost * p.units >= 0 ? 'good' : 'bad') as Tone },
+          { text: p.stock, tone: (p.stock <= 0 ? 'bad' : p.stock <= 10 ? 'warn' : 'good') as Tone },
         ]),
+        totalRow: ['Total', '', totalUnits, lkr(totalRev), lkr(totalCost), lkr(totalProfit), ''],
         empty: 'No products found.',
+      },
+      {
+        type: 'summary',
+        title: 'How Gross Profit is calculated',
+        rows: [
+          { label: 'Revenue (product sales in this period)', value: lkr(totalRev) },
+          { label: 'Less: Manufacturing cost (units sold x cost per unit)', value: `- ${lkr(totalCost)}` },
+          { label: 'Gross Profit', value: lkr(totalProfit), bold: true, tone: totalProfit >= 0 ? 'good' : 'bad' },
+        ],
       },
     ],
   };
 }
 
 function inventory(d: ReportData): ReportDoc {
-  const items = INITIAL_INVENTORY;
+  const items = readInventory();
   const low = items.filter((i) => getInventoryStatus(i.stock) === 'low-stock').length;
   const out = items.filter((i) => getInventoryStatus(i.stock) === 'out-of-stock').length;
   const value = items.reduce((s, i) => s + i.stock * i.unitValue, 0);
@@ -289,30 +303,16 @@ function inventory(d: ReportData): ReportDoc {
         }),
         totalRow: ['Total', '', items.reduce((s, i) => s + i.stock, 0), '', lkr(value)],
       },
-      { type: 'section', title: 'Finished product stock' },
-      {
-        type: 'table',
-        columns: [
-          { header: 'Product', w: 5 },
-          { header: 'SKU', w: 2 },
-          { header: 'Stock', w: 1.5, align: 'right' },
-          { header: 'Status', w: 2, align: 'center' },
-        ],
-        rows: d.products.map((p) => {
-          const st = Number(p.stock ?? 0);
-          return [p.productName || 'Untitled', p.productId || '-', st, { text: st <= 0 ? 'Out of Stock' : st <= 10 ? 'Low Stock' : 'In Stock', tone: (st <= 0 ? 'bad' : st <= 10 ? 'warn' : 'good') as Tone }] as Cell[];
-        }),
-        empty: 'No products found.',
-      },
     ],
   };
 }
 
 function customers(d: ReportData, r: Range): ReportDoc {
-  const ords = d.orders.filter((o) => live(o) && inRange(day(o.createdAt), r));
+  // Per-customer figures cover all of a customer's orders (same as the Customers page).
+  const ords = d.orders.filter((o) => live(o));
   const stat = new Map<string, { orders: number; spent: number; last: Date | null }>();
   ords.forEach((o) => {
-    const k = o.customerId || o.customerName;
+    const k = (o.email || '').trim().toLowerCase() || o.customerId || o.customerName;
     const cur = stat.get(k) ?? { orders: 0, spent: 0, last: null };
     cur.orders += 1;
     cur.spent += orderTotal(o);
@@ -322,8 +322,9 @@ function customers(d: ReportData, r: Range): ReportDoc {
   });
   const rows = d.customers.map((c) => {
     const name = c.customerName || c.name || 'Customer';
+    const mail = (c.emailAddress || c.email || '').trim().toLowerCase();
     const key = c.customerId || c.id || c._id || name;
-    const s = stat.get(key) ?? stat.get(name) ?? { orders: 0, spent: 0, last: null };
+    const s = (mail && stat.get(mail)) || stat.get(key) || stat.get(name) || { orders: 0, spent: 0, last: null };
     return { name, email: c.emailAddress || c.email || c.phoneNumber || c.phone || '-', active: c.isActive !== false, ...s };
   });
   const top = rows.sort((a, b) => b.spent - a.spent).slice(0, 25);

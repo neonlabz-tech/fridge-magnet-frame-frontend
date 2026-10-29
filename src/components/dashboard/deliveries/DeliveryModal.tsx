@@ -32,6 +32,7 @@ interface DeliveryModalProps {
   nextSequence: number;
   onClose: () => void;
   onSave: (delivery: Delivery, isNew: boolean) => void | Promise<void>;
+  onSaveMany?: (deliveries: Delivery[]) => void | Promise<void>;
   onEditRequest: (delivery: Delivery) => void;
 }
 
@@ -84,6 +85,7 @@ export default function DeliveryModal({
   nextSequence,
   onClose,
   onSave,
+  onSaveMany,
   onEditRequest,
 }: DeliveryModalProps) {
   const [form, setForm] = useState<Delivery>(emptyForm(nextSequence));
@@ -94,15 +96,18 @@ export default function DeliveryModal({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [dispatchOrders, setDispatchOrders] = useState<DispatchOrder[]>([]);
+  const [picked, setPicked] = useState<DispatchOrder[]>([]);
 
   const open = mode !== null;
   const readOnly = mode === 'view';
   const isCreate = mode === 'create';
+  const multi = isCreate && picked.length > 1;
 
   useEffect(() => {
     if (!open) return;
     setForm(delivery ? { ...delivery, zones: [...delivery.zones] } : emptyForm(nextSequence));
     setOrderQuery('');
+    setPicked([]);
     setOrderOpen(false);
     setError(null);
     setAddingZone(false);
@@ -134,21 +139,46 @@ export default function DeliveryModal({
   const set = <K extends keyof Delivery>(key: K, value: Delivery[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  const pickOrder = (o: DispatchOrder) => {
+  const applyOrder = (o: DispatchOrder | undefined) =>
     setForm((f) => ({
       ...f,
-      orderId: o.orderId,
-      orderTotal: o.total,
-      recipient: o.customer,
-      phone: o.phone,
-      address: o.address,
-      place: o.place,
+      orderId: o?.orderId ?? '',
+      orderTotal: o?.total ?? 0,
+      recipient: o?.customer ?? '',
+      phone: o?.phone ?? '',
+      address: o?.address ?? '',
+      place: o?.place ?? '',
     }));
-    setOrderQuery(o.orderId);
-    setOrderOpen(false);
+
+  // Orders can be ticked on/off; several orders can share one driver.
+  const pickOrder = (o: DispatchOrder) => {
+    const next = picked.some((p) => p.orderId === o.orderId)
+      ? picked.filter((p) => p.orderId !== o.orderId)
+      : [...picked, o];
+    setPicked(next);
+    applyOrder(next.length === 1 ? next[0] : next.length ? { ...next[0] } : undefined);
+    setOrderQuery('');
+    setError(null);
   };
 
   const submit = () => {
+    if (multi) {
+      if (!onSaveMany) return setError('Multiple orders are not supported here.');
+      const list: Delivery[] = picked.map((o, i) => ({
+        ...form,
+        id: `#MGD-${nextSequence + i}`,
+        tracking: `TRK-${nextSequence + i}`,
+        orderId: o.orderId,
+        orderTotal: o.total,
+        recipient: o.customer,
+        phone: o.phone,
+        address: o.address,
+        place: o.place || o.address.split(',').slice(-2).join(',').trim(),
+        status: 'in-transit',
+      }));
+      void onSaveMany(list);
+      return;
+    }
     if (!form.orderId) return setError('Please select an order.');
     if (!form.recipient.trim() || !form.phone.trim() || !form.address.trim())
       return setError('Recipient name, phone and address are required.');
@@ -200,7 +230,7 @@ export default function DeliveryModal({
             <button type="button" className={btnPrimary} onClick={submit}>
               {isCreate ? (
                 <>
-                  Create &amp; Dispatch Delivery <ArrowRight size={13} />
+                  {multi ? `Create & Dispatch ${picked.length} Deliveries` : 'Create & Dispatch Delivery'} <ArrowRight size={13} />
                 </>
               ) : (
                 'Save'
@@ -215,6 +245,7 @@ export default function DeliveryModal({
         <label className={labelCls}>Order{isCreate ? 's' : ''}</label>
 
         {isCreate ? (
+          <>
           <div className="relative">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#2563EB]" />
             <input
@@ -233,7 +264,7 @@ export default function DeliveryModal({
                   <p className="p-4 text-center text-xs text-[#94A3B8]">No matching orders.</p>
                 )}
                 {matches.map((o) => {
-                  const selected = form.orderId === o.orderId;
+                  const selected = picked.some((p) => p.orderId === o.orderId);
                   return (
                     <div
                       key={o.orderId}
@@ -274,6 +305,22 @@ export default function DeliveryModal({
               </div>
             )}
           </div>
+          <p className="mt-1.5 text-[11px] font-medium text-[#64748B]">
+            Only orders with status <span className="font-bold text-[#0F172A]">Shipped</span> are listed here. You can select several orders for one driver.
+          </p>
+          {picked.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {picked.map((o) => (
+                <span key={o.orderId} className="inline-flex items-center gap-1.5 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-[#2563EB]">
+                  {o.orderId} · {o.customer}
+                  <button type="button" aria-label="Remove order" onClick={() => pickOrder(o)} className="text-[#2563EB] hover:text-rose-600">
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          </>
         ) : (
           <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF]/60 px-4 py-2.5">
             <p className="flex items-center gap-2 text-xs font-bold text-[#2563EB]">
@@ -291,7 +338,12 @@ export default function DeliveryModal({
         {/* 1. CUSTOMER & DESTINATION */}
         <div>
           <SectionTitle n={1}>Customer &amp; Delivery</SectionTitle>
-          <div className="space-y-3">
+          {multi ? (
+            <p className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF]/60 px-3.5 py-3 text-xs font-medium text-[#475569]">
+              {picked.length} orders selected. Each delivery uses its own customer name, phone and address from the order.
+            </p>
+          ) : null}
+          <div className={`space-y-3 ${multi ? 'hidden' : ''}`}>
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <label className="text-xs font-semibold text-[#64748B]">Recipient Name</label>
@@ -413,7 +465,7 @@ export default function DeliveryModal({
               </div>
             </div>
 
-            <div className={isCreate ? '' : 'grid grid-cols-2 gap-3'}>
+            <div className={`${isCreate ? '' : 'grid grid-cols-2 gap-3'} ${multi ? 'hidden' : ''}`}>
               <div>
                 <label className={labelCls}>{isCreate ? 'Tracking ID' : 'Dispatch Tracking ID'}</label>
                 <div className="relative">
