@@ -415,6 +415,7 @@ export default function OperatorsView() {
       {/* Add / Edit */}
       <ModalShell
         open={formOpen}
+        dirty={editing ? (form.name !== editing.name || form.email !== editing.email || form.phone !== editing.phone || !!form.password || !!form.confirm || form.role !== editing.role) : !!(form.name.trim() || form.email.trim() || form.phone.trim() || form.password || form.confirm)}
         onClose={() => setFormOpen(false)}
         icon={<UserPlus size={18} />}
         title={editing ? 'Edit User' : 'Add User'}

@@ -416,6 +416,7 @@ export default function ProductsPage() {
             togglingId={togglingId}
             onView={setViewTarget}
             onEdit={setEditTarget}
+            onDelete={(p) => { setDeleteError(null); setDeleteTarget(p); }}
             onToggle={handleToggle}
           />
 

@@ -43,7 +43,7 @@ export default function TeamPanel({
         <table className="w-full min-w-[1080px] border-collapse text-left">
           <thead>
             <tr className="bg-[#F8FAFC]">
-              {['User', 'Leads', 'Calls today', 'New leads today', 'Answered', 'Pending follow-ups', 'Converted (month)', 'Sales (month)', 'Actions'].map((h) => (
+              {['User', 'Leads', 'Calls today', 'New leads today', 'Answered', 'Pending follow-ups', 'Magnets (month)', 'Sales (month)', 'Actions'].map((h) => (
                 <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#64748B]">{h}</th>
               ))}
             </tr>
@@ -66,7 +66,7 @@ export default function TeamPanel({
                     <td className="px-4 py-3"><Bar value={m.leadsToday} target={tg.dailyLeads} text={`${m.leadsToday} / ${tg.dailyLeads}`} /></td>
                     <td className="px-4 py-3 text-xs font-semibold text-[#0F172A]">{m.answeredToday}</td>
                     <td className="px-4 py-3 text-xs font-semibold text-amber-600">{m.pendingFollowUps}{m.dueToday ? ` (${m.dueToday} due)` : ''}</td>
-                    <td className="px-4 py-3"><Bar value={m.convertedMonth} target={tg.monthlyOrders} text={`${m.convertedMonth} / ${tg.monthlyOrders}`} /></td>
+                    <td className="px-4 py-3"><Bar value={m.magnetsMonth} target={tg.monthlyOrders} text={`${m.magnetsMonth} / ${tg.monthlyOrders}`} /></td>
                     <td className="px-4 py-3"><Bar value={m.salesMonth} target={tg.salesAmount} text={`${m.salesMonth.toLocaleString('en-US')} / ${tg.salesAmount.toLocaleString('en-US')}`} /></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
@@ -99,7 +99,7 @@ export default function TeamPanel({
         <div className="space-y-4 pt-1">
           {([
             ['Daily target', [['dailyCalls', 'Calls per day'], ['dailyLeads', 'New leads per day']]],
-            ['Monthly target', [['monthlyOrders', 'Orders (converted leads)'], ['salesAmount', 'Sales amount (LKR)']]],
+            ['Monthly target', [['monthlyOrders', 'Monthly magnet target'], ['salesAmount', 'Sales amount (LKR)']]],
           ] as const).map(([title, fields]) => (
             <div key={title}>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#64748B]">{title}</p>

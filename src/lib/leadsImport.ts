@@ -1,4 +1,5 @@
 import { CALL_STATUSES, LEAD_STATUSES, RESULTS, SOURCES, type FollowUp, type Lead, type LeadStatus } from '@/lib/crm';
+import type { ReportDoc } from '@/components/dashboard/reports/reportPdf';
 
 /* ---------- CSV parsing (quotes, commas and line breaks inside quotes, BOM) ---------- */
 export function parseCsv(text: string): string[][] {
@@ -41,7 +42,6 @@ export function parseCsv(text: string): string[][] {
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 const ALIASES: Record<string, string[]> = {
   dateAdded: ['dateadded', 'date', 'created', 'createdat'],
-  id: ['leadid', 'id'],
   business: ['customerbusiness', 'business', 'businessname', 'customer', 'customername', 'name'],
   phone: ['phone', 'phonenumber', 'mobile', 'contact', 'contactnumber'],
   source: ['source'],
@@ -57,10 +57,8 @@ const ALIASES: Record<string, string[]> = {
   notes: ['notes', 'note', 'remarks'],
 };
 
-export const TEMPLATE_HEADERS = [
-  'Date Added', 'Lead ID', 'Customer / Business', 'Phone', 'Source', 'Call Status', 'Result',
-  'Interested Package', 'Status', 'Next Follow-up', 'Follow-up 1', 'Follow-up 2', 'Follow-up 3', 'Converted Customer ID',
-];
+/** Lead IDs are never read from the file: they are generated automatically (ML001, ML002 ...). */
+export const TEMPLATE_HEADERS = ['Date Added', 'Customer / Business', 'Phone', 'Source', 'Lead Status', 'Call Status', 'Next Follow-up'];
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -107,7 +105,7 @@ export interface ImportParse {
 }
 
 /** Turns CSV text into leads. `owner` is used when the file has no Owner column / value. */
-export function buildLeads(text: string, owner: string): ImportParse {
+export function buildLeads(text: string, owner: string, addedBy = ''): ImportParse {
   const table = parseCsv(text).filter((r) => r.some((c) => c.trim()));
   if (!table.length) return { rows: [], missingColumns: ['Customer / Business'], recognised: [] };
 
@@ -142,6 +140,10 @@ export function buildLeads(text: string, owner: string): ImportParse {
       rows.push({ line, lead: null, problem: 'Empty row (no name or phone).' });
       return;
     }
+    if (!/^\d{10}$/.test(phone)) {
+      rows.push({ line, lead: null, problem: 'Phone number must be exactly 10 digits.' });
+      return;
+    }
 
     const rowOwner = get('owner').toLowerCase() || owner;
     const callStatus = pick(get('callStatus'), CALL_STATUSES) || 'Not Contacted';
@@ -171,7 +173,7 @@ export function buildLeads(text: string, owner: string): ImportParse {
 
     const rawSource = get('source');
     const lead: Lead = {
-      id: get('id'),
+      id: '',
       dateAdded: parseDate(get('dateAdded')) || new Date().toISOString(),
       business,
       phone,
@@ -182,6 +184,7 @@ export function buildLeads(text: string, owner: string): ImportParse {
       status,
       nextFollowUp,
       owner: rowOwner,
+      addedBy: addedBy || rowOwner,
       email: get('email'),
       address: get('address'),
       notes: get('notes'),
@@ -195,6 +198,57 @@ export function buildLeads(text: string, owner: string): ImportParse {
 }
 
 export function templateCsv(): string {
-  const sample = ['05-Oct-2026', 'ML001', 'Sample Shop', '0771234567', 'Facebook', 'Answered', 'Callback', 'magnet', 'Follow Up', '13-Oct-2026', '09-Oct-2026', '', '', ''];
+  const sample = ['05-Oct-2026', 'Sample Shop', '0771234567', 'Facebook', 'New', 'Not Contacted', '13-Oct-2026'];
   return [TEMPLATE_HEADERS, sample].map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\r\n');
+}
+
+/** A printable guide for the CSV template: columns, allowed values and an example row. */
+export function templatePdfDoc(): ReportDoc {
+  return {
+    title: 'Leads Import Template Guide',
+    period: 'How to fill the CSV file',
+    fileName: 'leads-import-guide.pdf',
+    blocks: [
+      { type: 'section', title: 'Columns (keep this order and these headers)' },
+      {
+        type: 'table',
+        columns: [
+          { header: 'Column', w: 2.4 },
+          { header: 'Required', w: 1.2 },
+          { header: 'What to enter', w: 5 },
+        ],
+        rows: [
+          ['Date Added', 'No', 'e.g. 05-Oct-2026 or 2026-10-05. Today is used when empty.'],
+          ['Customer / Business', 'Yes', 'Customer or business name, e.g. Sample Shop.'],
+          ['Phone', 'Yes', 'Exactly 10 digits, e.g. 0771234567. A number that already exists is skipped.'],
+          ['Source', 'No', SOURCES.join(', ')],
+          ['Lead Status', 'No', 'One of the statuses below. New when empty.'],
+          ['Call Status', 'No', CALL_STATUSES.join(', ') + '.'],
+          ['Next Follow-up', 'No', 'e.g. 13-Oct-2026.'],
+        ],
+      },
+      { type: 'section', title: 'Allowed Lead Status values' },
+      {
+        type: 'table',
+        columns: [{ header: 'Lead Status', w: 4 }],
+        rows: LEAD_STATUSES.filter((s) => s !== 'Converted').map((s) => [s]),
+      },
+      { type: 'section', title: 'Example row' },
+      {
+        type: 'table',
+        columns: TEMPLATE_HEADERS.map((h, i) => ({ header: h, w: i === 1 ? 2.2 : 1.6 })),
+        rows: [['05-Oct-2026', 'Sample Shop', '0771234567', 'Facebook', 'New', 'Not Contacted', '13-Oct-2026']],
+      },
+      { type: 'section', title: 'Notes' },
+      {
+        type: 'table',
+        columns: [{ header: 'Good to know', w: 8 }],
+        rows: [
+          ['Do not add a Lead ID column. Lead IDs (ML001, ML002 ...) are created automatically.'],
+          ['Save the sheet as CSV (File > Download > CSV in Google Sheets) before uploading.'],
+          ['Rows with an empty name, an invalid phone number or a phone number already used by another lead are skipped.'],
+        ],
+      },
+    ],
+  };
 }

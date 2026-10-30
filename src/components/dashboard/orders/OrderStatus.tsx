@@ -151,7 +151,7 @@ export default function OrderStatus({
     }
   };
 
-  const RETENTION_DAYS = 7;
+  const RETENTION_DAYS = 3;
   const hasPhotos = items.some((i) => i.uploadedImages?.length);
   const photosExpireOn = currentOrder.deliveredAt
     ? new Date(new Date(currentOrder.deliveredAt).getTime() + RETENTION_DAYS * 86400000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })

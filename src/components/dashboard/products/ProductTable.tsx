@@ -1,4 +1,4 @@
-import { Eye, Pencil } from 'lucide-react';
+import { Eye, Pencil, Trash2 } from 'lucide-react';
 import type { Product } from '@/types/product';
 import { useInventory } from '@/lib/inventoryStore';
 import { readMaterials, materialCost, useMaterialsSync } from '@/lib/materials';
@@ -8,13 +8,14 @@ interface ProductTableProps {
   togglingId?: string | null;
   onView: (product: Product) => void;
   onEdit: (product: Product) => void;
+  onDelete: (product: Product) => void;
   onToggle: (product: Product) => void;
 }
 
 const money = (n: number) =>
   `LKR ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function ProductTable({ products, togglingId, onView, onEdit, onToggle }: ProductTableProps) {
+export default function ProductTable({ products, togglingId, onView, onEdit, onDelete, onToggle }: ProductTableProps) {
   const rows = Array.isArray(products) ? products : [];
   const inventory = useInventory();
   useMaterialsSync();
@@ -127,6 +128,15 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onT
                         className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-blue-50 hover:text-[#2563EB]"
                       >
                         <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${p.name}`}
+                        title="Delete"
+                        onClick={() => onDelete(p)}
+                        className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        <Trash2 size={15} />
                       </button>
                       <button
                         type="button"
