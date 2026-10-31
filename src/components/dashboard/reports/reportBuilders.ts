@@ -367,10 +367,10 @@ function leads(r: Range): ReportDoc {
   const converted = list.filter((l) => l.status === 'Converted');
   const eod = new Date();
   eod.setHours(23, 59, 59, 999);
-  const due = list.filter((l) => l.status !== 'Converted' && l.nextFollowUp && new Date(l.nextFollowUp) <= eod);
+  const due = list.filter((l) => !['Converted', 'Lost', 'Not interested'].includes(l.status) && l.nextFollowUp && new Date(l.nextFollowUp) <= eod);
   const users = readCrmUsers();
   const nameOf = (u: string) => (u ? users.find((x) => x.username === u)?.name ?? u : 'Unassigned');
-  const stageTone: Record<string, Tone> = { New: 'info', Connected: 'info', 'Follow Up': 'warn', Converted: 'good', Lost: 'muted' };
+  const stageTone: Record<string, Tone> = { New: 'info', Connected: 'info', Interested: 'info', 'Call back': 'warn', 'Order discussion': 'warn', 'Follow Up': 'warn', 'No response': 'muted', 'Not interested': 'muted', Converted: 'good', Lost: 'muted' };
 
   return {
     title: 'Leads & Follow-ups Report',
@@ -389,7 +389,7 @@ function leads(r: Range): ReportDoc {
       { type: 'section', title: 'Pipeline by status' },
       {
         type: 'bars',
-        items: (['New', 'Connected', 'Follow Up', 'Converted', 'Lost'] as const).map((s) => ({
+        items: (['New', 'Connected', 'Interested', 'Call back', 'Order discussion', 'Follow Up', 'No response', 'Not interested', 'Converted', 'Lost'] as const).map((s) => ({
           label: s,
           value: list.filter((l) => l.status === s).length,
           display: String(list.filter((l) => l.status === s).length),
@@ -411,7 +411,7 @@ function leads(r: Range): ReportDoc {
           const mine = list.filter((l) => l.owner === u.username);
           const calls = all.flatMap((l) => l.history).filter((h) => !h.system && h.by === u.username && inRange(day(h.at), r)).length;
           const conv = mine.filter((l) => l.status === 'Converted');
-          return [u.name, mine.length, calls, mine.filter((l) => l.status === 'Follow Up' || l.status === 'Connected').length, conv.length, { text: lkr(conv.reduce((s, l) => s + (l.order?.total ?? 0), 0)), bold: true }] as Cell[];
+          return [u.name, mine.length, calls, mine.filter((l) => !['New', 'Converted', 'Lost', 'Not interested'].includes(l.status)).length, conv.length, { text: lkr(conv.reduce((s, l) => s + (l.order?.total ?? 0), 0)), bold: true }] as Cell[];
         }),
         empty: 'No sales users yet.',
       },

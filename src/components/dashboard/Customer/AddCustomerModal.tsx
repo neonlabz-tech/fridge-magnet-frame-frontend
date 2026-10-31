@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, User, Mail, Phone, MapPin, Save } from 'lucide-react';
 import { displayId } from './CustomerShared';
+import { apiV1Url } from '@/lib/backendUrl';
 
 interface AddCustomerModalProps {
   isOpen: boolean;
@@ -58,13 +59,27 @@ const AddCustomerModal = ({
     }
   }, [initialData, isOpen]);
 
+  const dirty = isEdit
+    ? form.name !== (initialData?.name ?? '') || form.email !== (initialData?.email ?? '') || form.phone !== (initialData?.phone ?? '') || form.address !== (initialData?.address ?? '')
+    : !!(form.name.trim() || form.email.trim() || form.phone.trim() || form.address.trim());
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async () => {
-    if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.address.trim()) {
+    if (!form.name.trim() || !form.phone.trim() || !form.address.trim()) {
       setError('Please fill in all required fields.');
+      return;
+    }
+    const phone = form.phone.replace(/[\s-]/g, '');
+    if (!/^\d{10}$/.test(phone)) {
+      setError('Phone number must contain exactly 10 digits (e.g. 0771234567).');
+      return;
+    }
+    const email = form.email.trim();
+    if (email && !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+      setError('Enter a valid email like user@example.com, or leave it empty.');
       return;
     }
 
@@ -74,18 +89,19 @@ const AddCustomerModal = ({
     try {
       const customerUpdateId = initialData?.recordId || initialData?.id;
       const url = customerUpdateId
-        ? `/api/v1/customers/${encodeURIComponent(customerUpdateId)}`
-        : '/api/v1/customers';
+        ? apiV1Url(`/customers/${encodeURIComponent(customerUpdateId)}`)
+        : apiV1Url('/customers');
 
       const res = await fetch(url, {
         method: customerUpdateId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, type: customerType, emailVerified: customerType === 'Website' ? form.emailVerified : false }),
+        body: JSON.stringify({ ...form, phone, email, type: customerType, emailVerified: customerType === 'Website' ? form.emailVerified : false }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message ?? `Server error: ${res.status}`);
+        const m = data?.message;
+        throw new Error(Array.isArray(m) ? m.join(', ') : m ?? `Server error: ${res.status}`);
       }
 
       onSuccess();
@@ -112,7 +128,7 @@ const AddCustomerModal = ({
   return (
     <div
       className="compact-ui fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-xs"
-      onClick={onClose}
+      onClick={dirty ? undefined : onClose}
     >
       <div
         className="flex max-h-[94vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
@@ -165,7 +181,7 @@ const AddCustomerModal = ({
 
           <div>
             <label className={labelCls}>
-              Email Address <span className="text-rose-500">*</span>
+              Email Address <span className="font-normal text-[#94A3B8]">(optional)</span>
             </label>
             <div className="relative mt-1.5">
               {icon(<Mail size={14} />)}
@@ -189,9 +205,11 @@ const AddCustomerModal = ({
               <input
                 type="tel"
                 name="phone"
+                inputMode="numeric"
+                maxLength={10}
                 value={form.phone}
-                onChange={handleChange}
-                placeholder="e.g. 077 123 4567"
+                onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                placeholder="e.g. 0771234567"
                 className={fieldCls}
               />
             </div>

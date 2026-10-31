@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { X, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 
 /* ---------- shared class names (all 12px) ---------- */
@@ -24,7 +24,10 @@ export function ModalShell({
   maxWidth = 'max-w-3xl',
   children,
   footer,
+  dirty = false,
 }: {
+  /** When true (the user typed something), clicking outside no longer closes the dialog. */
+  dirty?: boolean;
   open: boolean;
   onClose: () => void;
   icon?: ReactNode;
@@ -34,15 +37,23 @@ export function ModalShell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  // Once the user types or picks anything inside, clicking outside no longer closes the dialog.
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (!open) setTouched(false);
+  }, [open]);
+  const locked = dirty || touched;
   if (!open) return null;
   return (
     <div
       className="compact-ui fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-xs sm:p-4"
-      onClick={onClose}
+      onClick={locked ? undefined : onClose}
     >
       <div
         className={`flex max-h-[94vh] w-full ${maxWidth} flex-col overflow-hidden rounded-2xl bg-white shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
+        onInputCapture={() => setTouched(true)}
+        onChangeCapture={() => setTouched(true)}
       >
         <div className="flex items-start gap-3 px-5 pb-3 pt-4 sm:px-6">
           {icon && (

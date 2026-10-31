@@ -4,9 +4,9 @@ import StatCard from '@/components/dashboard/shared/StatCard';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, ArrowUp, ArrowDown, Wallet } from 'lucide-react';
 import type { Transaction, TxKind } from '@/types/finance';
-import { currentUsername, readTransactions, refreshTransactions, saveTransaction, visibleTransactions } from './financeStore';
+import { currentUsername, deleteTransaction, readTransactions, refreshTransactions, saveTransaction, visibleTransactions } from './financeStore';
 import { useToastStore } from '@/store/toastStore';
-import { lkr } from '@/components/dashboard/shared/UiKit';
+import { ConfirmModal, lkr } from '@/components/dashboard/shared/UiKit';
 import FinanceModal, { type FinanceModalMode } from './FinanceModal';
 import TransactionCard from './TransactionCard';
 import FlowChart from './FlowChart';
@@ -29,6 +29,7 @@ export default function FinanceView() {
     };
   }, []);
   const [search, setSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
   const [tab, setTab] = useState<TxKind>('income');
   const [modal, setModal] = useState<{ kind: TxKind; mode: FinanceModalMode; tx: Transaction | null } | null>(null);
 
@@ -125,10 +126,35 @@ export default function FinanceView() {
           search={search}
           onView={(tx) => setModal({ kind: tab, mode: 'view', tx })}
           onEdit={(tx) => setModal({ kind: tab, mode: 'edit', tx })}
+          onDelete={(tx) => setDeleteTarget(tx)}
         />
       </div>
 
       <FlowChart transactions={transactions} />
+
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title={`Delete this ${deleteTarget?.kind === 'expense' ? 'expense' : 'income'}?`}
+        message={
+          <>
+            <span className="font-bold text-[#0F172A]">{deleteTarget?.ref || deleteTarget?.id}</span> ({deleteTarget ? lkr(deleteTarget.amount) : ''}) will be permanently removed from the database.
+          </>
+        }
+        confirmLabel="Delete"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (!target) return;
+          try {
+            await deleteTransaction(target.id);
+            setTransactions(visibleTransactions(readTransactions()));
+            addToast(`${target.kind === 'income' ? 'Income' : 'Expense'} deleted.`, 'success');
+          } catch (e) {
+            addToast(e instanceof Error ? e.message : 'Could not delete the record.', 'error');
+          }
+        }}
+      />
 
       <FinanceModal
         kind={modal?.kind ?? 'income'}

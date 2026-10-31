@@ -8,10 +8,12 @@ import { loadReportData, type ReportData } from '@/components/dashboard/reports/
 import { readTransactions, visibleTransactions } from '@/components/dashboard/finance/financeStore';
 import { readDeliveries } from '@/lib/deliveryStore';
 import { readInventory, refreshInventory } from '@/lib/inventoryStore';
+import LeadsOverview from './LeadsOverview';
 import StatCard from '@/components/dashboard/shared/StatCard';
 import { getInventoryStatus } from '@/types/inventory';
 import { OverviewSkeleton } from '@/components/dashboard/shared/Skeleton';
 import { getSessionAllowedPages } from '@/lib/roles';
+import { readSession } from '@/lib/crm';
 import { AreaChart, BarChart, Donut, HBars } from './Charts';
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -37,9 +39,11 @@ function Panel({ title, sub, href, children, className = '' }: { title: string; 
 export default function OverviewView() {
   const [data, setData] = useState<ReportData | null>(null);
   const [allowed, setAllowed] = useState<string[] | null>(null);
+  const [isMember, setIsMember] = useState(false);
 
   useEffect(() => {
     setAllowed(getSessionAllowedPages());
+    setIsMember(readSession()?.role === 'member');
   }, []);
 
   useEffect(() => {
@@ -145,6 +149,8 @@ export default function OverviewView() {
         <p className="text-xs text-[#64748B]">Weekly summary across orders, customers, stock, deliveries and finance.</p>
       </div>
 
+      {isMember && can('/dashboard/leads') && <LeadsOverview />}
+
       {visibleStats.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
           {visibleStats.map(({ label, value, icon, tone, href, note }) => (
@@ -180,7 +186,7 @@ export default function OverviewView() {
         {can('/dashboard/deliveries') && <Panel title="Delivery status" href="/dashboard/deliveries"><Donut data={m.delivery} centerLabel="Deliveries" /></Panel>}
       </div>
 
-      {visibleStats.length === 0 && allowed.filter((h) => h !== '/dashboard').length === 0 && (
+      {visibleStats.length === 0 && allowed.filter((h) => h !== '/dashboard').length === 0 && !(isMember && can('/dashboard/leads')) && (
         <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-white p-10 text-center text-xs text-[#64748B]">
           No pages are assigned to your role yet. Please contact the administrator.
         </div>

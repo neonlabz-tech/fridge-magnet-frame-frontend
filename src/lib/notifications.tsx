@@ -1,5 +1,6 @@
 import { apiV1Url } from "@/lib/backendUrl";
 import { Package, ShoppingBag } from "lucide-react";
+import { getSessionAllowedPages } from "@/lib/roles";
 
 export type NotifItem = {
   id: string;
@@ -44,18 +45,25 @@ type ApiProduct = {
 export async function fetchNotifications(): Promise<NotifItem[]> {
   const items: NotifItem[] = [];
 
+  // Only show what the signed-in person can actually open (no order alerts without the Orders page, etc.).
+  const allowed = getSessionAllowedPages();
+  const canOrders = allowed.includes("/dashboard/orders");
+  const canStock = allowed.includes("/dashboard/products") || allowed.includes("/dashboard/inventory");
+  if (!canOrders && !canStock) return items;
+  const skip = () => Promise.resolve(null as Response | null);
+
   try {
     const [ordersRes, lowRes, outRes] = await Promise.all([
-      fetch(apiV1Url("/orders?status=PENDING"), { cache: "no-store" }),
-      fetch(apiV1Url("/products?status=Low+Stock&limit=5"), {
-        cache: "no-store",
-      }),
-      fetch(apiV1Url("/products?status=Out+of+Stock&limit=5"), {
-        cache: "no-store",
-      }),
+      canOrders ? fetch(apiV1Url("/orders?status=PENDING"), { cache: "no-store" }) : skip(),
+      canStock
+        ? fetch(apiV1Url("/products?status=Low+Stock&limit=5"), { cache: "no-store" })
+        : skip(),
+      canStock
+        ? fetch(apiV1Url("/products?status=Out+of+Stock&limit=5"), { cache: "no-store" })
+        : skip(),
     ]);
 
-    if (ordersRes.ok) {
+    if (ordersRes && ordersRes.ok) {
       const orders = (await ordersRes.json()) as ApiOrder[];
       const recent = orders.slice(0, 10);
       for (const o of recent) {
@@ -71,8 +79,8 @@ export async function fetchNotifications(): Promise<NotifItem[]> {
       }
     }
 
-    const extractProducts = async (res: Response): Promise<ApiProduct[]> => {
-      if (!res.ok) return [];
+    const extractProducts = async (res: Response | null): Promise<ApiProduct[]> => {
+      if (!res || !res.ok) return [];
       const body = await res.json();
       if (Array.isArray(body)) return body as ApiProduct[];
       return (body?.data?.products ?? body?.products ?? []) as ApiProduct[];

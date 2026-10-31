@@ -6,10 +6,22 @@ export const TARGETS_KEY = 'magnify-crm-targets';
 const CHANNEL = 'magnify-crm';
 
 export const SOURCES = ['Google Maps', 'Referral', 'Facebook', 'Instagram', 'Walk-in', 'Other'] as const;
-export const CALL_STATUSES = ['Not Contacted', 'Answered', 'No Answer'] as const;
+export const CALL_STATUSES = ['Answered', 'Not Contacted', 'No Answer', 'Wrong Number'] as const;
 export const RESULTS = ['Callback', 'Order Discussion', 'No Response', 'Interested', 'Converted'] as const;
-export const LEAD_STATUSES = ['New', 'Connected', 'Follow Up', 'Converted', 'Lost'] as const;
+export const LEAD_STATUSES = ['New', 'Connected', 'Interested', 'Not interested', 'Call back', 'Order discussion', 'No response', 'Follow Up', 'Lost', 'Converted'] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
+/** Statuses a call / follow-up record can set ('Converted' opens the order popup). */
+export const FOLLOW_UP_STATUSES = ['New', 'Connected', 'Interested', 'Not interested', 'Call back', 'Order discussion', 'No response', 'Follow Up', 'Lost', 'Converted'] as const;
+/** Leads that are finished: no more follow-ups are due. */
+export const CLOSED_STATUSES: readonly string[] = ['Converted', 'Lost', 'Not interested'];
+/** Leads being worked on (contacted, not yet closed). */
+export const isInProgress = (status: string) => status !== 'New' && !CLOSED_STATUSES.includes(status);
+
+/** How a person is shown in the leads screens: BO001 for team members, 'admin' for the admin. */
+export const displayPerson = (u?: string) => (!u ? '-' : u.toLowerCase() === 'admin' ? 'admin' : u.toUpperCase());
+
+/** Digits only (phone numbers are compared without spaces or dashes). */
+export const phoneDigits = (p: string) => String(p ?? '').replace(/\D/g, '');
 
 export interface FollowUp {
   n: number; // 0 = system entry (reassign etc.)
@@ -20,6 +32,8 @@ export interface FollowUp {
   product: string;
   notes: string;
   nextFollowUp: string;
+  /** Lead status chosen in this follow-up (it becomes the lead's main status). */
+  status?: string;
   system?: boolean;
   edits?: { at: string; by: string; before: string }[]; // audit trail for edited records
 }
@@ -46,6 +60,8 @@ export interface Lead {
   status: LeadStatus;
   nextFollowUp: string; // ISO or ''
   owner: string; // username or ''
+  /** Who added the lead: username or 'admin'. */
+  addedBy?: string;
   email: string;
   address: string;
   notes: string;
@@ -159,6 +175,7 @@ const normalizeLead = (r: Partial<Lead>): Lead => ({
   status: (LEAD_STATUSES as readonly string[]).includes(String(r.status)) ? (r.status as LeadStatus) : 'New',
   nextFollowUp: String(r.nextFollowUp ?? ''),
   owner: String(r.owner ?? ''),
+  addedBy: String(r.addedBy ?? '') || String(r.owner ?? ''),
   email: String(r.email ?? ''),
   address: String(r.address ?? ''),
   notes: String(r.notes ?? ''),
@@ -202,6 +219,7 @@ const leadBody = (l: Lead) => ({
   status: l.status,
   nextFollowUp: l.nextFollowUp,
   owner: l.owner,
+  addedBy: l.addedBy ?? '',
   email: l.email,
   address: l.address,
   notes: l.notes,
@@ -466,6 +484,8 @@ export interface UserMetrics {
   answeredToday: number;
   leadsToday: number;
   convertedMonth: number;
+  /** Magnets (units) sold through leads converted this month. */
+  magnetsMonth: number;
   salesMonth: number;
   dueToday: number;
 }
@@ -477,12 +497,13 @@ export function metricsFor(leads: Lead[], username: string): UserMetrics {
   const converted = mine.filter((l) => l.status === 'Converted' && l.order && sameMonth(l.order.convertedAt));
   return {
     leads: mine.length,
-    pendingFollowUps: mine.filter((l) => l.status === 'Follow Up' || l.status === 'Connected').length,
+    pendingFollowUps: mine.filter((l) => isInProgress(l.status)).length,
     callsToday: calls.length,
     answeredToday: calls.filter((h) => h.callStatus === 'Answered').length,
     leadsToday: mine.filter((l) => sameDay(l.dateAdded)).length,
     convertedMonth: converted.length,
+    magnetsMonth: converted.reduce((s, l) => s + (Number(l.order?.quantity) || 0), 0),
     salesMonth: converted.reduce((s, l) => s + (l.order?.total ?? 0), 0),
-    dueToday: mine.filter((l) => l.status !== 'Converted' && l.status !== 'Lost' && l.nextFollowUp && new Date(l.nextFollowUp) <= eod).length,
+    dueToday: mine.filter((l) => !CLOSED_STATUSES.includes(l.status) && l.nextFollowUp && new Date(l.nextFollowUp) <= eod).length,
   };
 }
