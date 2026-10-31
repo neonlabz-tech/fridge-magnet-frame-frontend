@@ -75,34 +75,14 @@ async function fetchTransactions(): Promise<Transaction[] | null> {
 
 let inflight: Promise<Transaction[]> | null = null;
 
-/** Loads all records from the backend and refreshes the cache (old local ones are uploaded once). */
+/** Loads all records from the backend and refreshes the cache . */
 export function refreshTransactions(): Promise<Transaction[]> {
   if (inflight) return inflight;
   inflight = (async () => {
     const remote = await fetchTransactions();
     if (remote === null) return readTransactions();
-    if (remote.length === 0) {
-      const local = readTransactions();
-      if (local.length) {
-        for (const t of local) {
-          try {
-            await fetch(endpoint(), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: t.id, ...body(t), createdBy: t.createdBy || 'admin' }),
-            });
-          } catch {
-            break;
-          }
-        }
-        const again = await fetchTransactions();
-        if (again && again.length) {
-          writeTransactions(again);
-          return again;
-        }
-        return local;
-      }
-    }
+    // The database is the source of truth: if it is empty, the list is empty
+    // (never re-upload the browser cache, otherwise deleted records come back).
     writeTransactions(remote);
     return remote;
   })().finally(() => {
@@ -127,6 +107,17 @@ export async function saveTransaction(t: Transaction, isNew: boolean): Promise<T
   const saved = normalize((j?.data ?? j ?? t) as Raw);
   writeTransactions([saved, ...readTransactions().filter((x) => x.id !== saved.id && x.id !== t.id)]);
   return saved;
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(endpoint(`/${encodeURIComponent(id)}`), { method: 'DELETE' });
+  } catch {
+    throw new Error('Could not reach the server. The record was not deleted.');
+  }
+  if (!res.ok && res.status !== 404) throw new Error(await apiError(res, 'Could not delete the record.'));
+  writeTransactions(readTransactions().filter((x) => x.id !== id));
 }
 
 /** Admin sees every record (including the main/seed data). Everyone else sees only the records they added. */

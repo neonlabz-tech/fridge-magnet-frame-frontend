@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Menu, UserCircle2 } from "lucide-react";
 import Link from "next/link";
-import { DEMO_SESSION_KEY, type DemoSession } from "@/lib/demoAuth";
+import { DEMO_SESSION_KEY, readDemoTeams, type DemoSession } from "@/lib/demoAuth";
 
 import {
   NOTIF_EVENT,
@@ -19,6 +19,19 @@ import {
 
 /** Polling interval in ms — check for new notifications every 15 seconds */
 const POLL_INTERVAL = 15_000;
+
+/** A team member's role (e.g. "Operations Manager"), taken from the cached team list. */
+function memberRole(s: DemoSession | null): string | undefined {
+  if (!s) return undefined;
+  try {
+    const m = readDemoTeams()
+      .flatMap((t) => t.members)
+      .find((x) => x.username.toLowerCase() === s.username.toLowerCase());
+    return m?.role || s.teamName;
+  } catch {
+    return s.teamName;
+  }
+}
 
 export default function TopAppBar({
   onMenuClick,
@@ -382,7 +395,7 @@ export default function TopAppBar({
               <span className="profile-role font-medium">
                 {demoSession?.role === "admin"
                   ? "Administrator"
-                  : demoSession?.teamName ?? "Team member"}
+                  : memberRole(demoSession) ?? "Team member"}
               </span>
             </div>
           </div>

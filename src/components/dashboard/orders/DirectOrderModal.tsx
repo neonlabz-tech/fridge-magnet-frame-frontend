@@ -96,6 +96,7 @@ export default function DirectOrderModal({
   // Payment
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [paymentNote, setPaymentNote] = useState('');
+  const [deliveryFee, setDeliveryFee] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Load existing customers for the search dropdown
@@ -141,15 +142,19 @@ export default function DirectOrderModal({
 
   // Lead conversion: pre-fill the customer (and products) every time the modal opens for a lead.
   const prefillProductsDone = useRef(false);
+  // Every time the modal opens it starts fresh (blank, or pre-filled from a lead).
   useEffect(() => {
-    if (!isOpen || !prefill) return;
-    setCustomerQuery(prefill.name);
+    if (!isOpen) return;
+    setCustomerQuery(prefill?.name ?? '');
     setSelectedCustomerId(null);
-    setPhone(prefill.phone);
-    setEmail(prefill.email);
+    setCustomerOpen(false);
+    setPhone(prefill?.phone ?? '');
+    setEmail(prefill?.email ?? '');
     setSelectedItems([]);
     setProductQuery('');
+    setPaymentMethod('Cash');
     setPaymentNote('');
+    setDeliveryFee('');
     setSaveToDirectory(true);
     prefillProductsDone.current = false;
   }, [isOpen, prefill]);
@@ -211,7 +216,8 @@ export default function DirectOrderModal({
 
   const subtotal = selectedItems.reduce((acc, it) => acc + it.price * it.quantity, 0);
   const itemCount = selectedItems.reduce((acc, it) => acc + it.quantity, 0);
-  const totalAmount = subtotal;
+  const feeAmount = Math.max(0, Math.round(Number(deliveryFee) || 0));
+  const totalAmount = subtotal + feeAmount;
 
   const qtyOf = (productId: string) =>
     selectedItems.find((it) => it.productId === productId)?.quantity ?? 0;
@@ -303,7 +309,7 @@ export default function DirectOrderModal({
           phone: phone.trim(),
           qty: itemCount,
           totalValue: totalAmount,
-          deliveryFee: 0,
+          deliveryFee: feeAmount,
           shippingAddress: prefill?.address?.trim() || '',
           adminNote: paymentNote.trim(),
           paymentMethod,
@@ -349,10 +355,12 @@ export default function DirectOrderModal({
     }
   };
 
+  const dirty = !!(customerQuery.trim() || deliveryFee || phone.trim() || email.trim() || selectedItems.length || paymentNote.trim());
+
   const showCustomerDropdown = customerOpen && customerQuery.trim().length > 0;
 
   return (
-    <div className="direct-order-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-xs sm:p-4" onClick={() => { if (!submitting) handleClose(); }}>
+    <div className="direct-order-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-xs sm:p-4" onClick={() => { if (!submitting && !dirty) handleClose(); }}>
       <div onClick={(e) => e.stopPropagation()} className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-[#E2E8F0] px-6 py-3.5">
@@ -726,6 +734,18 @@ export default function DirectOrderModal({
                   <div className="flex justify-between text-[#64748B]">
                     <span>Items ({itemCount})</span>
                     <span className="font-semibold text-[#0F172A]">{lkr(subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-[#64748B]">
+                    <label htmlFor="direct-delivery-fee">Delivery fee (LKR)</label>
+                    <input
+                      id="direct-delivery-fee"
+                      type="text"
+                      inputMode="numeric"
+                      value={deliveryFee}
+                      onChange={(e) => setDeliveryFee(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                      placeholder="0"
+                      className="h-8 w-28 rounded-lg border border-[#CBD5E1] bg-white px-2.5 text-right text-xs font-semibold text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/15"
+                    />
                   </div>
                   <div className="flex items-center justify-between border-t border-[#E2E8F0] pt-2">
                     <span className="font-bold text-[#0F172A]">TOTAL</span>

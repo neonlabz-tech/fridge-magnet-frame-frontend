@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, Pencil, ArrowUp, ArrowDown } from 'lucide-react';
+import { Eye, Pencil, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import type { Transaction, TxKind, TxMethod } from '@/types/finance';
 import { TableFooter } from '@/components/dashboard/shared/UiKit';
 
@@ -29,12 +29,14 @@ export default function TransactionCard({
   search,
   onView,
   onEdit,
+  onDelete,
 }: {
   kind: TxKind;
   items: Transaction[];
   search: string;
   onView: (t: Transaction) => void;
   onEdit: (t: Transaction) => void;
+  onDelete: (t: Transaction) => void;
 }) {
   const isIncome = kind === 'income';
   const [tab, setTab] = useState<'all' | TxMethod>('all');
@@ -156,6 +158,15 @@ export default function TransactionCard({
                         className="flex size-7 items-center justify-center rounded-md text-[#94A3B8] hover:bg-blue-50 hover:text-[#2563EB]"
                       >
                         <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Delete"
+                        title="Delete"
+                        onClick={() => onDelete(t)}
+                        className="flex size-7 items-center justify-center rounded-md text-[#94A3B8] hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>

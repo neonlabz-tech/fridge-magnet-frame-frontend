@@ -41,26 +41,27 @@ export default function ImportLeadsModal({ open, onClose, isAdmin, me, users, on
   };
 
   const effectiveOwner = isAdmin ? owner : me;
-  const parsed: ImportParse | null = useMemo(() => (text ? buildLeads(text, effectiveOwner) : null), [text, effectiveOwner]);
+  const parsed: ImportParse | null = useMemo(() => (text ? buildLeads(text, effectiveOwner, me || 'admin') : null), [text, effectiveOwner, me]);
 
   /* A row without an ID whose phone already exists is treated as a duplicate; rows with an ID are checked by the server. */
   const phones = useMemo(() => new Set(existing.map((l) => norm(l.phone)).filter(Boolean)), [existing]);
-  const ids = useMemo(() => new Set(existing.map((l) => l.id)), [existing]);
 
   const summary = useMemo(() => {
     if (!parsed) return null;
     const seen = new Set<string>();
     const ready: Lead[] = [];
     let empty = 0;
+    let invalid = 0;
     let dup = 0;
     for (const r of parsed.rows) {
       if (!r.lead) {
-        empty += 1;
+        if (r.problem?.includes('10 digits')) invalid += 1;
+        else empty += 1;
         continue;
       }
       const l = r.lead;
-      const key = l.id || norm(l.phone);
-      const isDup = l.id ? ids.has(l.id) : norm(l.phone) !== '' && phones.has(norm(l.phone));
+      const key = norm(l.phone);
+      const isDup = phones.has(norm(l.phone));
       if (isDup || (key && seen.has(key))) {
         dup += 1;
         continue;
@@ -68,8 +69,8 @@ export default function ImportLeadsModal({ open, onClose, isAdmin, me, users, on
       if (key) seen.add(key);
       ready.push(l);
     }
-    return { ready, empty, dup };
-  }, [parsed, ids, phones]);
+    return { ready, empty, dup, invalid };
+  }, [parsed, phones]);
 
   const pickFile = async (f?: File) => {
     if (!f) return;
@@ -154,10 +155,11 @@ export default function ImportLeadsModal({ open, onClose, isAdmin, me, users, on
 
         {summary && !parsed?.missingColumns.length && (
           <>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
                 ['Ready to import', summary.ready.length, 'text-emerald-600 bg-emerald-50'],
-                ['Already exist (skipped)', summary.dup, 'text-amber-600 bg-amber-50'],
+                ['Phone already exists (skipped)', summary.dup, 'text-amber-600 bg-amber-50'],
+                ['Invalid phone (skipped)', summary.invalid, 'text-rose-600 bg-rose-50'],
                 ['Empty rows (skipped)', summary.empty, 'text-slate-500 bg-slate-100'],
               ].map(([l, v, tone]) => (
                 <div key={String(l)} className={`rounded-lg px-3 py-2 ${tone}`}>
@@ -172,7 +174,7 @@ export default function ImportLeadsModal({ open, onClose, isAdmin, me, users, on
                 <table className="w-full min-w-[520px] text-left text-xs">
                   <thead className="bg-[#F8FAFC] text-[#64748B]">
                     <tr>
-                      {['Lead ID', 'Business', 'Phone', 'Call status', 'Status', 'Follow-ups'].map((h) => (
+                      {['Business', 'Phone', 'Source', 'Call status', 'Status'].map((h) => (
                         <th key={h} className="px-3 py-2 font-bold">{h}</th>
                       ))}
                     </tr>
@@ -180,12 +182,11 @@ export default function ImportLeadsModal({ open, onClose, isAdmin, me, users, on
                   <tbody className="divide-y divide-[#F1F5F9]">
                     {preview.map((l, i) => (
                       <tr key={i}>
-                        <td className="px-3 py-2 font-semibold text-[#2563EB]">{l.id || 'auto'}</td>
                         <td className="px-3 py-2">{l.business}</td>
                         <td className="px-3 py-2">{l.phone}</td>
+                        <td className="px-3 py-2">{l.source || '-'}</td>
                         <td className="px-3 py-2">{l.callStatus}</td>
                         <td className="px-3 py-2">{l.status}</td>
-                        <td className="px-3 py-2">{l.history.length}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -193,7 +194,7 @@ export default function ImportLeadsModal({ open, onClose, isAdmin, me, users, on
               </div>
             )}
             <p className="text-xs leading-5 text-[#94A3B8]">
-              First {preview.length} of {summary.ready.length} rows shown. Leads with an ID that already exists are skipped, so uploading the same file twice is safe.
+              First {preview.length} of {summary.ready.length} rows shown. Lead IDs are created automatically. A phone number that already exists is skipped, so uploading the same file twice is safe.
             </p>
           </>
         )}

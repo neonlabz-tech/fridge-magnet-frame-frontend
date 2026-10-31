@@ -163,6 +163,13 @@ export async function deleteDelivery(id: string): Promise<void> {
     throw new Error('Could not reach the server. Delivery was not removed.');
   }
   if (!res.ok && res.status !== 404) throw new Error(await apiError(res, 'Could not remove delivery.'));
+  if (res.status === 404) {
+    // 404 only counts as removed when the server really no longer lists it.
+    const remote = await fetchDeliveries();
+    if (remote && remote.some((x) => x.id === withHash(bare(id)))) {
+      throw new Error('Could not remove delivery on the server. Please try again.');
+    }
+  }
   writeDeliveries(readDeliveries().filter((x) => x.id !== id));
 }
 
