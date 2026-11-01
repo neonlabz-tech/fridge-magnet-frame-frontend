@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BadgePercent, Pencil, Plus, Trash2, TrendingUp } from 'lucide-react';
+import { Award, BadgePercent, Pencil, Plus, Trash2 } from 'lucide-react';
+import MyCommissionCards from './MyCommissionCards';
 import { ConfirmModal, ModalShell, btnGhost, btnPrimary, inputCls, labelCls, lkr } from '@/components/dashboard/shared/UiKit';
-import { metricsFor, type CrmUser, type Lead } from '@/lib/crm';
+import { metricsFor, salesOf, type CrmUser, type Lead } from '@/lib/crm';
 import { commissionFor, deleteTier, rangeLabel, saveTier, type CommissionTier } from '@/lib/commission';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -33,7 +34,6 @@ export default function CommissionPanel({
   const [busy, setBusy] = useState(false);
 
   const mine = commissionFor(tiers, metricsFor(leads, me).salesMonth);
-  const mySales = metricsFor(leads, me).salesMonth;
 
   // Admin: pick any month / year to review the team's commission.
   const now = new Date();
@@ -42,20 +42,24 @@ export default function CommissionPanel({
   const years = useMemo(() => {
     const set = new Set<number>([now.getFullYear()]);
     leads.forEach((l) => {
-      const y = l.order?.convertedAt ? new Date(l.order.convertedAt).getFullYear() : NaN;
-      if (Number.isFinite(y)) set.add(y);
+      salesOf(l).forEach((x) => {
+        const y = x.convertedAt ? new Date(x.convertedAt).getFullYear() : NaN;
+        if (Number.isFinite(y)) set.add(y);
+      });
     });
     return [...set].sort((a, b) => b - a);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads]);
   const salesIn = (username: string) =>
     leads
-      .filter((l) => {
-        if (l.owner !== username || l.status !== 'Converted' || !l.order?.convertedAt) return false;
-        const d = new Date(l.order.convertedAt);
+      .filter((l) => l.owner === username && l.status === 'Converted')
+      .flatMap((l) => salesOf(l))
+      .filter((x) => {
+        if (!x.convertedAt) return false;
+        const d = new Date(x.convertedAt);
         return d.getFullYear() === year && d.getMonth() === month;
       })
-      .reduce((sum, l) => sum + (l.order?.total ?? 0), 0);
+      .reduce((sum, x) => sum + (x.total ?? 0), 0);
 
   const openNew = () => {
     setError(null);
@@ -100,36 +104,16 @@ export default function CommissionPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      {!isAdmin && (
-        <section className="rounded-xl border border-[#E2E8F0] bg-white p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex size-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-              <BadgePercent size={22} />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-[#64748B]">My commission rate</p>
-              <p className="text-3xl font-bold text-[#0F172A]">{mine.rate}%</p>
-            </div>
-            <div className="ml-auto grid grid-cols-2 gap-x-8 gap-y-1 text-xs sm:grid-cols-3">
-              <div><p className="font-semibold text-[#64748B]">Sales this month</p><p className="text-sm font-bold text-[#0F172A]">{lkr(mySales)}</p></div>
-              <div><p className="font-semibold text-[#64748B]">Commission earned</p><p className="text-sm font-bold text-emerald-600">{lkr(mine.amount)}</p></div>
-              <div><p className="font-semibold text-[#64748B]">Current range</p><p className="text-sm font-bold text-[#0F172A]">{mine.index >= 0 ? rangeLabel(tiers, mine.index) : '-'}</p></div>
-            </div>
-          </div>
-          <div className="mt-4 rounded-lg bg-[#F8FAFC] px-3 py-2.5 text-xs text-[#475569]">
-            <TrendingUp size={13} className="mr-1.5 inline text-[#2563EB]" />
-            {mine.next
-              ? <>Sell <b>{lkr(mine.toNext)}</b> more this month to reach the <b>{mine.next.rate}%</b> tier ({lkr(mine.next.minSales)} and above).</>
-              : <>You are on the highest commission tier. Keep it up!</>}
-          </div>
-        </section>
-      )}
+      {!isAdmin && <MyCommissionCards me={me} leads={leads} tiers={tiers} />}
 
       <section className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
-        <div className="flex items-center justify-between border-b border-[#E2E8F0] px-4 py-3">
-          <div>
-            <h2 className="text-sm font-bold text-[#0F172A]">Commission Tiers</h2>
-            <p className="text-xs text-[#64748B]">Based on each user&apos;s monthly verified paid sales.</p>
+        <div className={`flex items-center justify-between px-4 py-3 ${isAdmin ? 'border-b border-[#E2E8F0]' : 'relative bg-[#0B3A7A] bg-[radial-gradient(ellipse_60%_120%_at_100%_100%,rgba(37,99,235,0.85),transparent_70%)] pb-8 pt-4'}`}>
+          <div className="flex items-center gap-3">
+            {!isAdmin && <span className="flex size-11 items-center justify-center rounded-xl bg-[#2563EB] text-white shadow-md"><Award size={22} /></span>}
+            <div>
+              <h2 className={`text-sm font-bold ${isAdmin ? 'text-[#0F172A]' : 'text-lg text-white'}`}>Commission Tiers</h2>
+              <p className={`text-xs ${isAdmin ? 'text-[#64748B]' : 'text-blue-100/90'}`}>Based on each user&apos;s monthly verified paid sales.</p>
+            </div>
           </div>
           {isAdmin && (
             <button type="button" onClick={openNew} className={`${btnPrimary} gap-1.5`}>
@@ -155,12 +139,12 @@ export default function CommissionPanel({
                 tiers.map((t, i) => {
                   const active = !isAdmin && mine.index === i;
                   return (
-                    <tr key={t.id} className={active ? 'bg-emerald-50/60' : 'hover:bg-[#F8FAFC]/80'}>
+                    <tr key={t.id} className={active ? 'bg-blue-100/80 shadow-[inset_4px_0_0_#3B82F6]' : 'hover:bg-[#F8FAFC]/80'}>
                       <td className="px-4 py-3 text-xs font-semibold text-[#0F172A]">
                         {rangeLabel(tiers, i)}
-                        {active && <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">You are here</span>}
+                        {active && <span className="ml-2 rounded-md bg-[#2563EB] px-2 py-0.5 text-[10px] font-bold text-white">You are here</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs font-bold text-[#0F172A]">{t.rate}%</td>
+                      <td className={`px-4 py-3 font-bold ${isAdmin ? "text-xs text-[#0F172A]" : "text-base text-[#1D4ED8]"}`}>{t.rate}%</td>
                       <td className="px-4 py-3 text-xs text-[#475569]">{t.rate > 0 ? `${t.rate}% of verified paid sales` : 'No commission'}</td>
                       {isAdmin && (
                         <td className="px-4 py-3">

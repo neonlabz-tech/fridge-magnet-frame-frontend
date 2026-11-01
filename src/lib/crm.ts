@@ -68,6 +68,8 @@ export interface Lead {
   history: FollowUp[];
   customerId?: string;
   order?: OrderInfo;
+  /** Every sale made for this client (one per order), kept for monthly history. */
+  sales?: OrderInfo[];
 }
 
 export interface Target {
@@ -182,6 +184,7 @@ const normalizeLead = (r: Partial<Lead>): Lead => ({
   history: Array.isArray(r.history) ? (r.history as FollowUp[]) : [],
   ...(r.customerId ? { customerId: String(r.customerId) } : {}),
   ...(r.order ? { order: r.order as OrderInfo } : {}),
+  ...(Array.isArray(r.sales) ? { sales: r.sales as OrderInfo[] } : {}),
 });
 
 const apiError = async (res: Response, fallback: string) => {
@@ -226,6 +229,7 @@ const leadBody = (l: Lead) => ({
   history: l.history,
   ...(l.customerId ? { customerId: l.customerId } : {}),
   ...(l.order ? { order: l.order } : {}),
+  ...(l.sales ? { sales: l.sales } : {}),
 });
 
 let leadsInflight: Promise<Lead[]> | null = null;
@@ -472,6 +476,8 @@ export const sameDay = (iso: string, d = new Date()) => {
   const x = new Date(iso);
   return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth() && x.getDate() === d.getDate();
 };
+/** All sales of a lead (older leads only have the single `order`). */
+export const salesOf = (l: Lead): OrderInfo[] => (l.sales?.length ? l.sales : l.order ? [l.order] : []);
 export const sameMonth = (iso: string, d = new Date()) => {
   const x = new Date(iso);
   return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth();
@@ -494,7 +500,8 @@ export function metricsFor(leads: Lead[], username: string): UserMetrics {
   const calls = leads.flatMap((l) => l.history).filter((h) => !h.system && h.by === username && sameDay(h.at));
   const eod = new Date();
   eod.setHours(23, 59, 59, 999);
-  const converted = mine.filter((l) => l.status === 'Converted' && l.order && sameMonth(l.order.convertedAt));
+  const monthSales = mine.filter((l) => l.status === 'Converted').flatMap((l) => salesOf(l)).filter((x) => sameMonth(x.convertedAt));
+  const converted = mine.filter((l) => l.status === 'Converted' && salesOf(l).some((x) => sameMonth(x.convertedAt)));
   return {
     leads: mine.length,
     pendingFollowUps: mine.filter((l) => isInProgress(l.status)).length,
@@ -502,8 +509,8 @@ export function metricsFor(leads: Lead[], username: string): UserMetrics {
     answeredToday: calls.filter((h) => h.callStatus === 'Answered').length,
     leadsToday: mine.filter((l) => sameDay(l.dateAdded)).length,
     convertedMonth: converted.length,
-    magnetsMonth: converted.reduce((s, l) => s + (Number(l.order?.quantity) || 0), 0),
-    salesMonth: converted.reduce((s, l) => s + (l.order?.total ?? 0), 0),
+    magnetsMonth: monthSales.reduce((n, x) => n + (Number(x.quantity) || 0), 0),
+    salesMonth: monthSales.reduce((n, x) => n + (x.total ?? 0), 0),
     dueToday: mine.filter((l) => !CLOSED_STATUSES.includes(l.status) && l.nextFollowUp && new Date(l.nextFollowUp) <= eod).length,
   };
 }

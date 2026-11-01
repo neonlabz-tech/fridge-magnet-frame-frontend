@@ -1,7 +1,7 @@
 'use client';
 
 import { canDo } from '@/lib/roles';
-import { Search, Download, Plus } from 'lucide-react';
+import { Search, Plus } from 'lucide-react';
 
 interface OrderHeaderProps {
   searchTerm?: string;
@@ -43,17 +43,6 @@ export default function OrderHeader({
             style={{ fontSize: '12px' }}
           />
         </div>
-
-        {/* Export Button */}
-        <button
-          type="button"
-          onClick={onExport}
-          className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-3.5 text-[12px] font-semibold text-[#334155] shadow-xs transition hover:bg-slate-50"
-          style={{ fontSize: '12px' }}
-        >
-          <Download size={15} className="text-[#64748B]" />
-          <span style={{ fontSize: '12px' }}>Export PDF</span>
-        </button>
 
         {/* Add Order Button */}
         {canDo('/dashboard/orders','create') && (

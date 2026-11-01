@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { LockKeyhole } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import { adminResetPassword } from '@/lib/teamApi';
 import { PASSWORD_HINT, passwordIssue } from '@/lib/password';
 
@@ -13,6 +13,7 @@ export default function ResetPasswordPage() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  const [shown, setShown] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setToken(new URLSearchParams(window.location.search).get('token') ?? '');
@@ -57,7 +58,10 @@ export default function ResetPasswordPage() {
                 {label}
                 <span className="mt-1.5 flex h-12 items-center gap-3 rounded-xl border border-[#CBD5E1] px-3 focus-within:border-[#2563EB]">
                   <LockKeyhole size={18} className="text-[#94A3B8]" />
-                  <input required type="password" autoComplete="new-password" value={value} onChange={(e) => setter(e.target.value)} className="w-full bg-transparent text-sm font-normal outline-none" />
+                  <input required type={shown[label] ? 'text' : 'password'} autoComplete="new-password" value={value} onChange={(e) => setter(e.target.value)} className="w-full bg-transparent text-sm font-normal outline-none" />
+                  <button type="button" onClick={() => setShown((p) => ({ ...p, [label]: !p[label] }))} aria-label={shown[label] ? 'Hide password' : 'Show password'} className="text-[#94A3B8] hover:text-[#475569]">
+                    {shown[label] ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </span>
               </label>
             ))}

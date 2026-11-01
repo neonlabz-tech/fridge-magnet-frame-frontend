@@ -135,14 +135,6 @@ export default function DeliveriesView() {
     }
   };
 
-  const handleExport = () => {
-    if (filtered.length === 0) return addToast('No deliveries to export.', 'error');
-    downloadCsv('deliveries.csv', [
-      ['Delivery ID', 'Order ID', 'Type', 'Tracking ID', 'Delivery Person', 'Place', 'Status'],
-      ...filtered.map((d) => [d.id, d.orderId, d.method, d.tracking, d.driver || '-', d.place, STATUS_STYLE[d.status].label]),
-    ]);
-  };
-
   /* ---------- bulk actions (on the ticked rows) ---------- */
   const chosen = deliveries.filter((d) => selected.has(d.id));
   const clearSelection = () => setSelected(new Set());
@@ -265,13 +257,6 @@ export default function DeliveriesView() {
               </Select>
             </div>
             <div className="flex gap-2 lg:ml-auto">
-              <button
-                type="button"
-                onClick={handleExport}
-                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#334155] shadow-xs hover:bg-slate-50 lg:flex-none"
-              >
-                <Download size={14} className="text-[#64748B]" /> Export
-              </button>
               {canDo('/dashboard/deliveries','create') && (
                 <button
                 type="button"

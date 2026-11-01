@@ -1,4 +1,4 @@
-import { canDo } from '@/lib/roles';
+import { canDo, canSeeProductField } from '@/lib/roles';
 import { Eye, Pencil, Trash2 } from 'lucide-react';
 import type { Product } from '@/types/product';
 import { useInventory } from '@/lib/inventoryStore';
@@ -19,6 +19,8 @@ const money = (n: number) =>
 export default function ProductTable({ products, togglingId, onView, onEdit, onDelete, onToggle }: ProductTableProps) {
   const rows = Array.isArray(products) ? products : [];
   const inventory = useInventory();
+  const showCost = canSeeProductField('cost');
+  const showProfit = canSeeProductField('profit');
   useMaterialsSync();
 
   return (
@@ -26,7 +28,7 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onD
       <table className="w-full min-w-[1080px] border-collapse text-left">
         <thead>
           <tr className="bg-[#F8FAFC]">
-            {['Product ID', 'Product Image', 'Product Name', 'Manufacture Unit Cost', 'Selling Unit Price', 'Unit Profit', 'Image Count', 'Stock'].map(
+            {['Product ID', 'Product Image', 'Product Name', 'Manufacture Unit Cost', 'Selling Unit Price', 'Unit Profit', 'Image Count', 'Stock'].filter((h) => (h !== 'Manufacture Unit Cost' || showCost) && (h !== 'Unit Profit' || showProfit)).map(
               (h) => (
                 <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#64748B]">
                   {h}
@@ -41,7 +43,7 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onD
         <tbody className="divide-y divide-[#F1F5F9]">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={9} className="py-16 text-center text-xs text-[#94A3B8]">
+              <td colSpan={9 - (showCost ? 0 : 1) - (showProfit ? 0 : 1)} className="py-16 text-center text-xs text-[#94A3B8]">
                 No products found. Try changing your filters or add a new product.
               </td>
             </tr>
@@ -82,13 +84,15 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onD
                       <p className="line-clamp-1 text-xs text-[#94A3B8]">{p.description || p.series}</p>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-[#64748B]">{money(cost)}</td>
+                  {showCost && <td className="whitespace-nowrap px-4 py-3 text-xs text-[#64748B]">{money(cost)}</td>}
                   <td className="whitespace-nowrap px-4 py-3 text-xs font-bold text-[#0F172A]">{money(p.price)}</td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <p className="text-xs font-bold text-emerald-600">
-                      {profit >= 0 ? '+' : '-'}LKR {Math.abs(profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </p>
-                  </td>
+                  {showProfit && (
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <p className="text-xs font-bold text-emerald-600">
+                        {profit >= 0 ? '+' : '-'}LKR {Math.abs(profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </p>
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <span className="inline-flex whitespace-nowrap rounded-full bg-[#F1F5F9] px-2.5 py-1 text-xs font-medium text-[#64748B]">
                       {images} {images === 1 ? 'Image' : 'Images'}

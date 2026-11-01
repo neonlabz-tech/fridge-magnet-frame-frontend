@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Warehouse,
+  Target,
 } from 'lucide-react';
 
 import Image from 'next/image';
@@ -33,6 +34,7 @@ const BASE_NAV_ITEMS = [
   { label: 'Inventory', icon: Warehouse, href: '/dashboard/inventory' },
   { label: 'Delivery', icon: Truck, href: '/dashboard/deliveries' },
   { label: 'Leads & Followups', icon: ListChecks, href: '/dashboard/leads' },
+  { label: 'Targets & Commission', icon: Target, href: '/dashboard/targets' },
   { label: 'Finance', icon: Banknote, href: '/dashboard/finance' },
 ] as const;
 
@@ -150,7 +152,7 @@ export default function Sidebar({
       </button>
 
       {/* Navigation */}
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pt-[25px]">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[...navItems.slice(0, baseCount), ...(navItems.length > baseCount ? [null] : []), ...navItems.slice(baseCount)].map((item) => {
           if (!item) {
             return (
@@ -175,7 +177,7 @@ export default function Sidebar({
               href={href}
               onClick={onClose}
               title={label}
-              className={`group mx-3 flex items-center gap-3 rounded-lg px-5 py-3 transition-colors ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
+              className={`group mx-3 flex items-center gap-3 rounded-lg px-5 py-2.5 transition-colors ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
                 isActive
                   ? 'text-white'
                   : 'text-white/80 hover:bg-white/10 hover:text-white'

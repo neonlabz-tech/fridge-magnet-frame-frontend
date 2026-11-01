@@ -21,6 +21,7 @@ export default function RolesPanel({ roles, memberCountByRole, onSave, onDelete 
   const [name, setName] = useState('');
   const [perms, setPerms] = useState<PermissionMap>({});
   const [widgets, setWidgets] = useState<string[]>(WIDGET_OPTIONS.map((w) => w.key));
+  const [hideCols, setHideCols] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<Role | null>(null);
   const [saving, setSaving] = useState(false);
@@ -30,6 +31,7 @@ export default function RolesPanel({ roles, memberCountByRole, onSave, onDelete 
     setName('');
     setPerms({});
     setWidgets(WIDGET_OPTIONS.map((w) => w.key));
+    setHideCols([]);
     setError('');
     setOpen(true);
   };
@@ -37,7 +39,8 @@ export default function RolesPanel({ roles, memberCountByRole, onSave, onDelete 
     setEditing(r);
     setName(r.name);
     setPerms(rolePermissions(r));
-    setWidgets(expandWidgets(r.widgets ?? WIDGET_OPTIONS.map((w) => w.key)));
+    setWidgets(expandWidgets(r.widgets ?? WIDGET_OPTIONS.map((w) => w.key)).filter((k) => !k.startsWith('hide-')));
+    setHideCols((r.widgets ?? []).filter((k) => k.startsWith('hide-')));
     setError('');
     setOpen(true);
   };
@@ -85,7 +88,7 @@ export default function RolesPanel({ roles, memberCountByRole, onSave, onDelete 
     if (roles.some((r) => r.name.toLowerCase() === n.toLowerCase() && r.id !== editing?.id)) return setError('A role with this name already exists.');
     if (!pagesOn.length) return setError('Give View access to at least one page.');
     setSaving(true);
-    const ok = await onSave(editing, n, perms, widgets);
+    const ok = await onSave(editing, n, perms, [...widgets, ...hideCols]);
     setSaving(false);
     if (ok) setOpen(false);
   };
@@ -185,7 +188,7 @@ export default function RolesPanel({ roles, memberCountByRole, onSave, onDelete 
                     const cur = perms[p.key] ?? [];
                     return (
                       <Fragment key={p.key}>
-                        <tr className="border-t border-[#E2E8F0]">
+                        <tr className={`border-t border-[#E2E8F0]`}>
                           <td className="px-3 py-2 font-semibold text-[#334155]">
                             {p.label}
                             {p.deleteLabel && <span className="block text-[10px] font-semibold text-red-600">Delete = {p.deleteLabel} (never deleted)</span>}
@@ -236,6 +239,20 @@ export default function RolesPanel({ roles, memberCountByRole, onSave, onDelete 
             </div>
             <p className="mt-2 text-xs leading-5 text-[#94A3B8]">A widget also needs View on its page. Overview itself is shown to everyone.</p>
           </div>
+          {pageViewable('/dashboard/products') && (
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-[#64748B]">Products table columns</label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {([['hide-product-cost', 'Manufacture Unit Cost'], ['hide-product-profit', 'Unit Profit']] as const).map(([k, l]) => (
+                  <label key={k} className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs font-semibold ${!hideCols.includes(k) ? 'border-[#2563EB] bg-[#EFF6FF] text-[#1D4ED8]' : 'border-[#E2E8F0] text-[#475569] hover:bg-slate-50'}`}>
+                    <input type="checkbox" checked={!hideCols.includes(k)} onChange={() => setHideCols((h) => (h.includes(k) ? h.filter((x) => x !== k) : [...h, k]))} className="size-4 accent-[#2563EB]" />
+                    Show {l}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[#94A3B8]">Untick to hide that column (and its value in the product view) from this role.</p>
+            </div>
+          )}
           {error && <p className="text-xs font-semibold text-rose-600">{error}</p>}
         </div>
       </ModalShell>

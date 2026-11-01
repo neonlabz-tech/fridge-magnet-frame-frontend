@@ -16,6 +16,7 @@ export const PAGE_OPTIONS: PageOption[] = [
   { href: '/dashboard/inventory', label: 'Inventory' },
   { href: '/dashboard/deliveries', label: 'Delivery' },
   { href: '/dashboard/leads', label: 'Leads & Followups' },
+  { href: '/dashboard/targets', label: 'Targets & Commission' },
   { href: '/dashboard/finance', label: 'Finance' },
 ];
 
@@ -68,6 +69,8 @@ export interface PermissionRow {
   /** Shown instead of "Delete" (customers are deactivated, never deleted). */
   deleteLabel?: string;
   note?: string;
+  /** Newly added page: highlighted in the roles matrix. */
+  isNew?: boolean;
 }
 export const PERMISSION_ROWS: PermissionRow[] = [
   { key: '/dashboard/orders', page: '/dashboard/orders', label: 'Orders' },
@@ -76,6 +79,7 @@ export const PERMISSION_ROWS: PermissionRow[] = [
   { key: '/dashboard/inventory', page: '/dashboard/inventory', label: 'Inventory' },
   { key: '/dashboard/deliveries', page: '/dashboard/deliveries', label: 'Delivery' },
   { key: '/dashboard/leads', page: '/dashboard/leads', label: 'Leads & Followups' },
+  { key: '/dashboard/targets', page: '/dashboard/targets', label: 'Targets & Commission' },
   { key: '/dashboard/finance#income', page: '/dashboard/finance', label: 'Finance › Income' },
   { key: '/dashboard/finance#expense', page: '/dashboard/finance', label: 'Finance › Expense' },
 ];
@@ -147,7 +151,13 @@ export function getAllowedPages(session: DemoSession | null): string[] {
     if (!member && session.allowedPages?.length) return session.allowedPages;
     const roles = readRoles();
     const role = roles.find((r) => r.name === member?.role) ?? roles.find((r) => r.name === DEFAULT_ROLE_NAME) ?? DEFAULT_ROLES[0];
-    return ['/dashboard', ...role.pages.filter((h) => PAGE_OPTIONS.some((p) => p.href === h))];
+    const pages = role.pages.filter((h) => PAGE_OPTIONS.some((p) => p.href === h));
+    // Overview only shows when at least one of its widgets is ticked for the role (and its page is allowed).
+    const hasWidget = expandWidgets(role.widgets ?? WIDGET_OPTIONS.map((w) => w.key)).some((k) => {
+      const w = WIDGET_OPTIONS.find((o) => o.key === k);
+      return !!w && (!w.page || pages.includes(w.page));
+    });
+    return [...(hasWidget ? ['/dashboard'] : []), ...pages];
   } catch {
     return ['/dashboard', ...DEFAULT_ROLES[0].pages];
   }
@@ -186,6 +196,15 @@ export function canDo(href: string, action: Action): boolean {
   if (perms[href]?.includes(action)) return true;
   // A page without a tab asks "any tab of it".
   return !href.includes('#') && Object.keys(perms).some((k) => k.startsWith(`${href}#`) && perms[k].includes(action));
+}
+
+/** Products page: may the signed-in person see manufacture cost / unit profit? (admin: always). */
+export function canSeeProductField(field: 'cost' | 'profit'): boolean {
+  const session = sessionNow();
+  if (!session) return false;
+  if (session.role === 'admin') return true;
+  const role = findRole(session);
+  return !(role?.widgets ?? []).includes(`hide-product-${field}`);
 }
 
 /** Overview widget keys the signed-in person may see (null = all; admin). */

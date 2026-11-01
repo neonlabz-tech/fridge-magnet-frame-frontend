@@ -270,10 +270,6 @@ export default function DirectOrderModal({
       addToast('Please enter the customer phone number.', 'error');
       return;
     }
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      addToast('Please enter a valid customer email address.', 'error');
-      return;
-    }
     if (selectedItems.length === 0) {
       addToast('Please add at least one product.', 'error');
       return;
@@ -292,7 +288,7 @@ export default function DirectOrderModal({
           body: JSON.stringify({
             customerName: name,
             phoneNumber: phone.trim(),
-            emailAddress: email.trim(),
+            ...(email.trim() ? { emailAddress: email.trim() } : {}),
           }),
         }).catch(() => undefined);
       }
@@ -305,7 +301,7 @@ export default function DirectOrderModal({
           orderId: `#${orderNo}`,
           customerName: name,
           customerId: prefill?.clientId || selectedCustomerId || `C-${Math.floor(10000 + Math.random() * 90000)}`,
-          email: email.trim(),
+          ...(email.trim() ? { email: email.trim() } : {}),
           phone: phone.trim(),
           qty: itemCount,
           totalValue: totalAmount,
@@ -501,9 +497,9 @@ export default function DirectOrderModal({
                     />
                   </div>
                   <div>
-                    <label className={labelCls}>Email</label>
+                    <label className={labelCls}>Email <span className="font-normal text-[#94A3B8]">(optional)</span></label>
                     <input
-                      type="email"
+                      type="text"
                       value={email}
                       placeholder="customer@example.com"
                       onChange={(e) => setEmail(e.target.value)}

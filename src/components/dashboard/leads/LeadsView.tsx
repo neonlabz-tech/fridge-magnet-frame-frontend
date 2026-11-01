@@ -3,43 +3,36 @@
 import { canDo } from '@/lib/roles';
 import StatCard from '@/components/dashboard/shared/StatCard';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BadgePercent, FileText, CheckCircle2, Eye, FileUp, Pencil, Plus, Search, Trash2, Users, CalendarClock, ListChecks } from 'lucide-react';
+import { FileText, CheckCircle2, Eye, FileUp, Pencil, Plus, Search, Trash2, Users, CalendarClock, ListChecks } from 'lucide-react';
 import type { DemoSession } from '@/lib/demoAuth';
 import { useToastStore } from '@/store/toastStore';
+import type { Order } from '@/types/order';
 import { ConfirmModal, TableFooter, btnGhost, btnPrimary, inputCls } from '@/components/dashboard/shared/UiKit';
 import { Skeleton } from '@/components/dashboard/shared/Skeleton';
 import DirectOrderModal from '@/components/dashboard/orders/DirectOrderModal';
 import {
   CLOSED_STATUSES,
-  DEFAULT_TARGET,
   SOURCES,
   displayPerson,
   isInProgress,
   phoneDigits,
-  metricsFor,
   nextCustomerId,
   nextLeadId,
+  salesOf,
   readCrmUsers,
   readLeads,
   readSession,
-  readTargets,
   refreshLeads,
-  refreshTargets,
-  saveTarget,
   subscribeCrm,
   syncLeads,
   type CrmUser,
   LEAD_STATUSES,
   type Lead,
-  type Target,
 } from '@/lib/crm';
 import { refreshTeam } from '@/lib/teamApi';
 import LeadProfileModal, { type ProfileSave } from './LeadProfileModal';
 import ImportLeadsModal from './ImportLeadsModal';
 import { downloadReportPdf } from '@/components/dashboard/reports/reportPdf';
-import TeamPanel from './TeamPanel';
-import CommissionPanel from './CommissionPanel';
-import { commissionFor, fetchTiers, type CommissionTier } from '@/lib/commission';
 
 const PAGE_SIZE = 8;
 const STATUS_TONE: Record<string, string> = {
@@ -69,13 +62,9 @@ export default function LeadsView() {
   const { addToast } = useToastStore();
   const [session, setSession] = useState<DemoSession | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [targets, setTargets] = useState<Record<string, Target>>({});
   const [users, setUsers] = useState<CrmUser[]>([]);
   const [ready, setReady] = useState(false);
-  const [tiers, setTiers] = useState<CommissionTier[]>([]);
-  const [tiersLoaded, setTiersLoaded] = useState(false);
 
-  const [tab, setTab] = useState<'leads' | 'team' | 'commission'>('leads');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [owner, setOwner] = useState('all');
@@ -97,18 +86,12 @@ export default function LeadsView() {
   const reload = useCallback(() => {
     setSession(readSession());
     setLeads(readLeads());
-    setTargets(readTargets());
     setUsers(readCrmUsers());
     setReady(true);
     // Cached copy shown first; the backend copy replaces it as soon as it answers.
-    Promise.all([refreshLeads(), refreshTargets(), refreshTeam()]).then(([l, t]) => {
+    Promise.all([refreshLeads(), refreshTeam()]).then(([l]) => {
       setLeads(l);
-      setTargets(t);
       setUsers(readCrmUsers());
-    });
-    fetchTiers().then((t) => {
-      if (t) setTiers(t);
-      setTiersLoaded(true);
     });
   }, []);
 
@@ -283,7 +266,25 @@ export default function LeadsView() {
     if (!ok) return;
     if (isNew) setPage(1);
     setProfile(null);
+    // A lead that was just converted opens the Direct Order popup with the client's details.
     if (converted.lead) setOrderFor(converted.lead);
+  };
+
+  /** Records the order just created for a client on the lead, so it counts towards sales, targets and commission. */
+  const recordSale = async (leadId: string, o: Order) => {
+    const items = o.items ?? [];
+    const qty = items.reduce((n, it) => n + (Number(it.quantity) || 0), 0) || Number(o.qty) || 0;
+    const total = items.reduce((n, it) => n + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0) || Number(o.subtotal) || 0;
+    const product = items.map((it) => it.name).filter(Boolean).join(', ');
+    if (!qty || !total) return;
+    const now = new Date();
+    await mutate((all) =>
+      all.map((l) => {
+        if (l.id !== leadId) return l;
+        const sale = { product, quantity: qty, unitPrice: Math.round(total / qty), total, address: l.address, phone: l.phone, convertedAt: now.toISOString() };
+        return { ...l, order: sale, sales: [...salesOf(l), sale] };
+      })
+    );
   };
 
   const applySale = (l: Lead, all: Lead[]): Lead => {
@@ -302,31 +303,6 @@ export default function LeadsView() {
     };
   };
 
-  const reassign = async (from: string, to: string) => {
-    let moved = 0;
-    const ok = await mutate((all) =>
-      all.map((l) => {
-        if (l.owner !== from || l.status === 'Converted') return l;
-        moved += 1;
-        return { ...l, owner: to, history: [...l.history, { n: 0, at: new Date().toISOString(), by: 'admin', callStatus: '', result: '', product: '', nextFollowUp: '', system: true, notes: `Reassigned from ${nameOf(from)} to ${nameOf(to)}.` }] };
-      })
-    );
-    if (ok) addToast(`${moved} lead(s) reassigned.`, 'success');
-  };
-
-  const setTarget = async (u: string, t: Target) => {
-    try {
-      await saveTarget(u, t);
-      setTargets((prev) => ({ ...prev, [u]: t }));
-      addToast('Targets saved.', 'success');
-    } catch (e) {
-      addToast(e instanceof Error ? e.message : 'Could not save targets.', 'error');
-    }
-  };
-
-  const myMetrics = metricsFor(leads, me);
-  const myTarget = targets[me] ?? DEFAULT_TARGET;
-  const myCommission = commissionFor(tiers, myMetrics.salesMonth);
 
   if (!ready) {
     return (
@@ -342,7 +318,7 @@ export default function LeadsView() {
       <div className="mb-4">
         <h1 className="text-xl font-bold text-[#0F172A]">Leads & Followups</h1>
         <p className="text-xs text-[#64748B]">
-          {isAdmin ? 'Add and assign leads, set targets and monitor the whole team.' : 'Add your own leads or work the ones assigned to you: call, update the result, schedule follow-ups and convert to sales.'}
+          {isAdmin ? 'Add and assign leads and monitor the whole team.' : 'Add your own leads or work the ones assigned to you: call, update the result, schedule follow-ups and convert to sales.'}
         </p>
       </div>
 
@@ -352,58 +328,7 @@ export default function LeadsView() {
         ))}
       </div>
 
-      {!isAdmin && tab !== 'commission' && (
-        <button type="button" onClick={() => setTab('commission')} className="mb-3 flex w-full items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-left hover:bg-emerald-50">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-white text-emerald-600"><BadgePercent size={18} /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-semibold text-[#64748B]">My commission</span>
-            <span className="block text-sm font-bold text-[#0F172A]">{myCommission.rate}% <span className="font-medium text-[#475569]">· LKR {myCommission.amount.toLocaleString('en-US')} earned this month</span></span>
-          </span>
-          <span className="text-xs font-bold text-emerald-700">View tiers</span>
-        </button>
-      )}
-
-      {!isAdmin && (
-        <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-[#E2E8F0] bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
-          {([
-            ['Calls today', myMetrics.callsToday, myTarget.dailyCalls],
-            ['New leads today', myMetrics.leadsToday, myTarget.dailyLeads],
-            ['Monthly Magnet Target', myMetrics.magnetsMonth, myTarget.monthlyOrders],
-            ['Sales this month (LKR)', myMetrics.salesMonth, myTarget.salesAmount],
-          ] as const).map(([l, v, t]) => {
-            const p = t > 0 ? Math.min(100, Math.round((v / t) * 100)) : 0;
-            return (
-              <div key={l}>
-                <div className="mb-1 flex justify-between text-xs"><span className="font-semibold text-[#64748B]">{l}</span><span className="font-bold text-[#0F172A]">{v.toLocaleString('en-US')} / {t > 0 ? t.toLocaleString('en-US') : 'target not set'}</span></div>
-                <div className="h-2 rounded-full bg-[#F1F5F9]"><div className={`h-2 rounded-full ${p >= 100 ? 'bg-emerald-500' : 'bg-[#2563EB]'}`} style={{ width: `${p}%` }} /></div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {(
-        <div className="mb-3 inline-flex w-fit rounded-xl border border-[#E2E8F0] bg-white p-1">
-          {([['leads', 'All Leads'], ...(isAdmin ? [['team', 'Team & Targets']] : []), ['commission', 'Commission']] as unknown as readonly (readonly ['leads' | 'team' | 'commission', string])[]).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} className={`h-9 rounded-lg px-4 text-xs font-bold ${tab === k ? 'bg-[#2563EB] text-white' : 'text-[#64748B] hover:bg-slate-50'}`}>{l}</button>
-          ))}
-        </div>
-      )}
-
-      {tab === 'commission' ? (
-        <CommissionPanel
-          isAdmin={isAdmin}
-          me={me}
-          users={users}
-          leads={leads}
-          tiers={tiers}
-          loaded={tiersLoaded}
-          onChanged={() => fetchTiers().then((t) => t && setTiers(t))}
-          notify={addToast}
-        />
-      ) : isAdmin && tab === 'team' ? (
-        <TeamPanel users={users} leads={leads} targets={targets} onSetTarget={setTarget} onReassign={reassign} />
-      ) : (
         <section className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
           <div className="flex flex-col gap-2 border-b border-[#E2E8F0] p-3 lg:flex-row lg:items-center">
             <div className="relative flex-1">
@@ -438,8 +363,8 @@ export default function LeadsView() {
                 {users.map((u) => <option key={u.username} value={u.username}>{u.name}</option>)}
               </select>
             )}
-            {canDo('/dashboard/leads', 'create') && <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}><FileUp size={14} /> Import CSV</button>}
-            <button type="button" onClick={downloadPdf} className={btnGhost}><FileText size={14} /> Download PDF</button>
+            {isAdmin && canDo('/dashboard/leads', 'create') && <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}><FileUp size={14} /> Import CSV</button>}
+            {isAdmin && <button type="button" onClick={downloadPdf} className={btnGhost}><FileText size={14} /> Download PDF</button>}
             {canDo('/dashboard/leads', 'create') && <button type="button" onClick={openNew} className={btnPrimary}><Plus size={14} /> Add Lead</button>}
           </div>
 
@@ -463,7 +388,7 @@ export default function LeadsView() {
                     return (
                       <tr key={l.id} className="hover:bg-[#F8FAFC]/80">
                         <td className="px-4 py-3 text-xs font-semibold text-[#64748B]">{(safePage - 1) * PAGE_SIZE + idx + 1}</td>
-                        <td className="px-4 py-3"><span className="rounded-md bg-[#EFF6FF] px-2 py-1 text-xs font-bold text-[#2563EB]">{l.id}</span></td>
+                        <td className="px-4 py-3"><button type="button" title="Open lead" onClick={() => setProfile({ lead: l, isNew: false })} className="rounded-md bg-[#EFF6FF] px-2 py-1 text-xs font-bold text-[#2563EB] hover:bg-[#DBEAFE] hover:underline">{l.id}</button></td>
                         <td className="px-4 py-3"><p className="text-xs font-bold text-[#0F172A]">{l.phone}</p><p className="text-xs text-[#94A3B8]">{l.business}</p></td>
                         <td className="whitespace-nowrap px-4 py-3"><p className="text-xs font-semibold text-[#0F172A]">{l.dateAdded ? fmtDate(l.dateAdded) : '-'}</p><p className="text-xs text-[#94A3B8]">{l.dateAdded ? fmtTime(l.dateAdded) : ''}</p></td>
                         <td className="px-4 py-3 text-xs text-[#475569]">{l.source}</td>
@@ -475,7 +400,7 @@ export default function LeadsView() {
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
                             <button type="button" title={l.status === 'Converted' ? 'View' : 'Edit / follow-up'} aria-label="Open lead" onClick={() => setProfile({ lead: l, isNew: false })} className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-blue-50 hover:text-[#2563EB]">{l.status === 'Converted' || !canDo('/dashboard/leads', 'edit') ? <Eye size={15} /> : <Pencil size={15} />}</button>
-                            {(isAdmin || l.status !== 'Converted') && canDo('/dashboard/leads', 'delete') && <button type="button" title="Delete" aria-label="Delete lead" onClick={() => setDeleting(l)} className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
+                            {isAdmin && canDo('/dashboard/leads', 'delete') && <button type="button" title="Delete" aria-label="Delete lead" onClick={() => setDeleting(l)} className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
                           </div>
                         </td>
                       </tr>
@@ -504,7 +429,7 @@ export default function LeadsView() {
             : null
         }
         onClose={() => setOrderFor(null)}
-        onOrderCreated={() => undefined}
+        onOrderCreated={(o) => { if (orderFor) void recordSale(orderFor.id, o); }}
       />
 
       <LeadProfileModal
@@ -518,6 +443,7 @@ export default function LeadsView() {
         onClose={() => setProfile(null)}
         onSave={saveProfile}
         onDelete={(l) => { setProfile(null); setDeleting(l); }}
+        onNewOrder={canDo('/dashboard/orders', 'create') ? (l) => { setProfile(null); setOrderFor(l); } : undefined}
       />
       <ImportLeadsModal
         open={importOpen}
