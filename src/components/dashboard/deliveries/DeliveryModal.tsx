@@ -94,6 +94,10 @@ export default function DeliveryModal({
   const [zoneDraft, setZoneDraft] = useState('');
   const [addingZone, setAddingZone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Field-level errors: red border + message under the field.
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<'order' | 'recipient' | 'phone' | 'address', string>>>({});
+  const clearErr = (k: 'order' | 'recipient' | 'phone' | 'address') =>
+    setFieldErrors((p) => (p[k] ? { ...p, [k]: undefined } : p));
   const [copied, setCopied] = useState(false);
   const [dispatchOrders, setDispatchOrders] = useState<DispatchOrder[]>([]);
   const [picked, setPicked] = useState<DispatchOrder[]>([]);
@@ -110,6 +114,7 @@ export default function DeliveryModal({
     setPicked([]);
     setOrderOpen(false);
     setError(null);
+    setFieldErrors({});
     setAddingZone(false);
     setZoneDraft('');
   }, [open, delivery, nextSequence]);
@@ -159,6 +164,7 @@ export default function DeliveryModal({
     applyOrder(next.length === 1 ? next[0] : next.length ? { ...next[0] } : undefined);
     setOrderQuery('');
     setError(null);
+    setFieldErrors({});
   };
 
   const submit = () => {
@@ -179,9 +185,19 @@ export default function DeliveryModal({
       void onSaveMany(list);
       return;
     }
-    if (!form.orderId) return setError('Please select an order.');
-    if (!form.recipient.trim() || !form.phone.trim() || !form.address.trim())
-      return setError('Recipient name, phone and address are required.');
+    const errs: typeof fieldErrors = {};
+    if (isCreate && !form.orderId) errs.order = 'Please select an order.';
+    if (!form.recipient.trim()) errs.recipient = 'Recipient name is required.';
+    const digits = form.phone.replace(/\D/g, '');
+    if (!form.phone.trim()) errs.phone = 'Phone number is required.';
+    else if (!/^[+\d][\d\s-]*$/.test(form.phone.trim()) || digits.length < 9 || digits.length > 12)
+      errs.phone = 'Enter a valid phone number (9–12 digits).';
+    if (!form.address.trim()) errs.address = 'Delivery address is required.';
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return setError('Please fix the highlighted fields.');
+    }
+    setFieldErrors({});
     onSave(
       {
         ...form,
@@ -253,10 +269,11 @@ export default function DeliveryModal({
               onChange={(e) => {
                 setOrderQuery(e.target.value);
                 setOrderOpen(true);
+                clearErr('order');
               }}
               onFocus={() => setOrderOpen(true)}
               placeholder="Search by order ID or customer, e.g. #ORD-250121-01"
-              className="h-10 w-full rounded-lg border border-[#2563EB] bg-white pl-9 pr-3 text-xs font-semibold text-[#0F172A] placeholder:font-normal placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/15"
+              className={`h-10 w-full rounded-lg border ${fieldErrors.order ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-[#2563EB]'} bg-white pl-9 pr-3 text-xs font-semibold text-[#0F172A] placeholder:font-normal placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/15`}
             />
             {orderOpen && orderQuery.trim() && (
               <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-xl">
@@ -305,6 +322,7 @@ export default function DeliveryModal({
               </div>
             )}
           </div>
+          {fieldErrors.order && <p className="mt-1 text-xs font-semibold text-rose-600">{fieldErrors.order}</p>}
           <p className="mt-1.5 text-[11px] font-medium text-[#64748B]">
             Only orders with status <span className="font-bold text-[#0F172A]">Shipped</span> are listed here. You can select several orders for one driver.
           </p>
@@ -354,12 +372,14 @@ export default function DeliveryModal({
                 )}
               </div>
               <input
-                className={fieldCls}
+                className={`${fieldCls} ${fieldErrors.recipient ? 'border-rose-500 ring-2 ring-rose-500/15' : ''}`}
                 value={form.recipient}
                 disabled={dis}
-                onChange={(e) => set('recipient', e.target.value)}
+                onChange={(e) => { set('recipient', e.target.value); clearErr('recipient'); }}
                 placeholder="Recipient full name"
+                aria-invalid={!!fieldErrors.recipient}
               />
+              {fieldErrors.recipient && <p className="mt-1 text-xs font-semibold text-rose-600">{fieldErrors.recipient}</p>}
             </div>
             <div>
               <label className={labelCls}>Contact Phone</label>
@@ -368,24 +388,28 @@ export default function DeliveryModal({
                   <Phone size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
                 )}
                 <input
-                  className={`${fieldCls} ${!isCreate ? 'pl-8' : ''}`}
+                  className={`${fieldCls} ${!isCreate ? 'pl-8' : ''} ${fieldErrors.phone ? 'border-rose-500 ring-2 ring-rose-500/15' : ''}`}
                   value={form.phone}
                   disabled={dis}
-                  onChange={(e) => set('phone', e.target.value)}
+                  onChange={(e) => { set('phone', e.target.value); clearErr('phone'); }}
                   placeholder="+94 77 000 0000"
+                  aria-invalid={!!fieldErrors.phone}
                 />
               </div>
+              {fieldErrors.phone && <p className="mt-1 text-xs font-semibold text-rose-600">{fieldErrors.phone}</p>}
             </div>
             <div>
               <label className={labelCls}>Delivery Address &amp; Zone</label>
               <textarea
                 rows={2}
-                className={textareaCls}
+                className={`${textareaCls} ${fieldErrors.address ? 'border-rose-500 ring-2 ring-rose-500/15' : ''}`}
                 value={form.address}
                 disabled={dis}
-                onChange={(e) => set('address', e.target.value)}
+                onChange={(e) => { set('address', e.target.value); clearErr('address'); }}
                 placeholder="Street address, town, district"
+                aria-invalid={!!fieldErrors.address}
               />
+              {fieldErrors.address && <p className="mt-1 text-xs font-semibold text-rose-600">{fieldErrors.address}</p>}
             </div>
             <div>
               <label className={labelCls}>Delivery Method</label>

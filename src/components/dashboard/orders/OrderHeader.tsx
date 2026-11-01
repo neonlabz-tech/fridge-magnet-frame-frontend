@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { Search, Download, Plus } from 'lucide-react';
 
 interface OrderHeaderProps {
@@ -55,7 +56,8 @@ export default function OrderHeader({
         </button>
 
         {/* Add Order Button */}
-        <button
+        {canDo('/dashboard/orders','create') && (
+          <button
           type="button"
           onClick={onAddOrder}
           className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#2563EB] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#1D4ED8] active:scale-[0.98]"
@@ -64,6 +66,7 @@ export default function OrderHeader({
           <Plus size={16} strokeWidth={2.5} />
           <span style={{ fontSize: '12px' }}>Add Order</span>
         </button>
+        )}
       </div>
     </div>
   );

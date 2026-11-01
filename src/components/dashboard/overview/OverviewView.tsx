@@ -12,7 +12,7 @@ import LeadsOverview from './LeadsOverview';
 import StatCard from '@/components/dashboard/shared/StatCard';
 import { getInventoryStatus } from '@/types/inventory';
 import { OverviewSkeleton } from '@/components/dashboard/shared/Skeleton';
-import { getSessionAllowedPages } from '@/lib/roles';
+import { getAllowedWidgets, getSessionAllowedPages } from '@/lib/roles';
 import { readSession } from '@/lib/crm';
 import { AreaChart, BarChart, Donut, HBars } from './Charts';
 
@@ -40,10 +40,21 @@ export default function OverviewView() {
   const [data, setData] = useState<ReportData | null>(null);
   const [allowed, setAllowed] = useState<string[] | null>(null);
   const [isMember, setIsMember] = useState(false);
+  const [widgets, setWidgets] = useState<string[] | null>(null);
 
   useEffect(() => {
     setAllowed(getSessionAllowedPages());
+    setWidgets(getAllowedWidgets());
     setIsMember(readSession()?.role === 'member');
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => {
+      setAllowed(getSessionAllowedPages());
+      setWidgets(getAllowedWidgets());
+    };
+    window.addEventListener('magnify-team-updated', refresh);
+    return () => window.removeEventListener('magnify-team-updated', refresh);
   }, []);
 
   useEffect(() => {
@@ -127,20 +138,21 @@ export default function OverviewView() {
     return { labels, revenue, count, income, expense, orderStatus, payments, topProducts, stock, delivery, newCustomers, lowItems, totalRev, net, orderCount: live.length, delivered: delSrc.filter((x) => x.status === 'delivered').length };
   }, [data]);
 
-  const stats: { label: string; value: string; icon: LucideIcon; tone: string; href: string; note: string }[] = [
-    { label: 'Orders this week', value: String(m.orderCount), icon: ShoppingBag, tone: 'bg-blue-50 text-[#2563EB]', href: '/dashboard/orders', note: 'Excludes canceled' },
-    { label: 'Weekly revenue', value: lkr(m.totalRev), icon: Banknote, tone: 'bg-emerald-50 text-emerald-600', href: '/dashboard/orders', note: 'Last 7 days' },
-    { label: 'New customers', value: String(m.newCustomers), icon: UserPlus, tone: 'bg-violet-50 text-violet-600', href: '/dashboard/customers', note: 'Joined this week' },
-    { label: 'Low / out of stock', value: String(m.lowItems), icon: TriangleAlert, tone: 'bg-amber-50 text-amber-500', href: '/dashboard/inventory', note: 'Items needing restock' },
-    { label: 'Deliveries done', value: String(m.delivered), icon: Truck, tone: 'bg-sky-50 text-sky-600', href: '/dashboard/deliveries', note: 'Delivered' },
-    { label: 'Net profit', value: lkr(m.net), icon: Boxes, tone: m.net >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500', href: '/dashboard/finance', note: 'Income - expenses' },
+  const stats: { key: string; label: string; value: string; icon: LucideIcon; tone: string; href: string; note: string }[] = [
+    { key: 'stat-orders', label: 'Orders this week', value: String(m.orderCount), icon: ShoppingBag, tone: 'bg-blue-50 text-[#2563EB]', href: '/dashboard/orders', note: 'Excludes canceled' },
+    { key: 'stat-revenue', label: 'Weekly revenue', value: lkr(m.totalRev), icon: Banknote, tone: 'bg-emerald-50 text-emerald-600', href: '/dashboard/orders', note: 'Last 7 days' },
+    { key: 'stat-customers', label: 'New customers', value: String(m.newCustomers), icon: UserPlus, tone: 'bg-violet-50 text-violet-600', href: '/dashboard/customers', note: 'Joined this week' },
+    { key: 'stat-stock', label: 'Low / out of stock', value: String(m.lowItems), icon: TriangleAlert, tone: 'bg-amber-50 text-amber-500', href: '/dashboard/inventory', note: 'Items needing restock' },
+    { key: 'stat-deliveries', label: 'Deliveries done', value: String(m.delivered), icon: Truck, tone: 'bg-sky-50 text-sky-600', href: '/dashboard/deliveries', note: 'Delivered' },
+    { key: 'stat-profit', label: 'Net profit', value: lkr(m.net), icon: Boxes, tone: m.net >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500', href: '/dashboard/finance', note: 'Income - expenses' },
   ];
 
   if (!data || !allowed) return <OverviewSkeleton />;
 
   const can = (...hrefs: string[]) => hrefs.some((h) => allowed.includes(h));
+  const w = (key: string) => widgets === null || widgets.includes(key);
 
-  const visibleStats = stats.filter((s) => can(s.href) || (s.href === '/dashboard/inventory' && can('/dashboard/products')));
+  const visibleStats = stats.filter((s) => w(s.key) && (can(s.href) || (s.href === '/dashboard/inventory' && can('/dashboard/products'))));
 
   return (
     <div className="compact-ui relative mx-auto flex w-full max-w-7xl flex-col px-3 pb-6 pt-2 sm:px-6 sm:pt-3 lg:px-8 lg:pt-4">
@@ -149,7 +161,7 @@ export default function OverviewView() {
         <p className="text-xs text-[#64748B]">Weekly summary across orders, customers, stock, deliveries and finance.</p>
       </div>
 
-      {isMember && can('/dashboard/leads') && <LeadsOverview />}
+      {isMember && can('/dashboard/leads') && w('leads') && <LeadsOverview />}
 
       {visibleStats.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -160,30 +172,30 @@ export default function OverviewView() {
       )}
 
       <div className="grid grid-flow-dense grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {can('/dashboard/orders') && (
+        {w('revenue-trend') && can('/dashboard/orders') && (
           <Panel title="Revenue trend" sub="Daily order revenue, last 7 days" href="/dashboard/orders" className="xl:col-span-2">
             <AreaChart labels={m.labels} values={m.revenue} />
           </Panel>
         )}
-        {can('/dashboard/orders') && (
+        {w('orders-per-day') && can('/dashboard/orders') && (
           <Panel title="Orders per day" sub="Number of orders placed" href="/dashboard/orders" className="xl:col-span-2">
             <BarChart labels={m.labels} series={[{ name: 'Orders', color: '#2563EB', values: m.count }]} />
           </Panel>
         )}
-        {can('/dashboard/finance') && (
+        {w('income-expenses') && can('/dashboard/finance') && (
           <Panel title="Income vs expenses" sub="Finance, last 7 days" href="/dashboard/finance" className="md:col-span-2 xl:col-span-3">
             <BarChart labels={m.labels} series={[{ name: 'Income', color: '#16A34A', values: m.income }, { name: 'Expenses', color: '#F87171', values: m.expense }]} />
           </Panel>
         )}
-        {can('/dashboard/products', '/dashboard/orders') && (
+        {w('top-products') && can('/dashboard/products', '/dashboard/orders') && (
           <Panel title="Top products" sub="By sales this week" href="/dashboard/products" className="md:col-span-2 xl:col-span-1">
             <HBars items={m.topProducts} />
           </Panel>
         )}
-        {can('/dashboard/orders') && <Panel title="Order status" href="/dashboard/orders"><Donut data={m.orderStatus} centerLabel="Orders" /></Panel>}
-        {can('/dashboard/finance') && <Panel title="Payment methods" href="/dashboard/finance"><Donut data={m.payments} centerLabel="Orders" /></Panel>}
-        {can('/dashboard/products', '/dashboard/inventory') && <Panel title="Product stock" href="/dashboard/products"><Donut data={m.stock} centerLabel="Products" /></Panel>}
-        {can('/dashboard/deliveries') && <Panel title="Delivery status" href="/dashboard/deliveries"><Donut data={m.delivery} centerLabel="Deliveries" /></Panel>}
+        {w('order-status') && can('/dashboard/orders') && <Panel title="Order status" href="/dashboard/orders"><Donut data={m.orderStatus} centerLabel="Orders" /></Panel>}
+        {w('payment-methods') && can('/dashboard/finance') && <Panel title="Payment methods" href="/dashboard/finance"><Donut data={m.payments} centerLabel="Orders" /></Panel>}
+        {w('product-stock') && can('/dashboard/products', '/dashboard/inventory') && <Panel title="Product stock" href="/dashboard/products"><Donut data={m.stock} centerLabel="Products" /></Panel>}
+        {w('delivery-status') && can('/dashboard/deliveries') && <Panel title="Delivery status" href="/dashboard/deliveries"><Donut data={m.delivery} centerLabel="Deliveries" /></Panel>}
       </div>
 
       {visibleStats.length === 0 && allowed.filter((h) => h !== '/dashboard').length === 0 && !(isMember && can('/dashboard/leads')) && (

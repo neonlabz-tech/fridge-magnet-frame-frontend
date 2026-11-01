@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import StatCard from '@/components/dashboard/shared/StatCard';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BadgePercent, FileText, CheckCircle2, Eye, FileUp, Pencil, Plus, Search, Trash2, Users, CalendarClock, ListChecks } from 'lucide-react';
@@ -437,9 +438,9 @@ export default function LeadsView() {
                 {users.map((u) => <option key={u.username} value={u.username}>{u.name}</option>)}
               </select>
             )}
-            <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}><FileUp size={14} /> Import CSV</button>
+            {canDo('/dashboard/leads', 'create') && <button type="button" onClick={() => setImportOpen(true)} className={btnGhost}><FileUp size={14} /> Import CSV</button>}
             <button type="button" onClick={downloadPdf} className={btnGhost}><FileText size={14} /> Download PDF</button>
-            <button type="button" onClick={openNew} className={btnPrimary}><Plus size={14} /> Add Lead</button>
+            {canDo('/dashboard/leads', 'create') && <button type="button" onClick={openNew} className={btnPrimary}><Plus size={14} /> Add Lead</button>}
           </div>
 
           <div className="overflow-x-auto">
@@ -473,8 +474,8 @@ export default function LeadsView() {
                         <td className="px-4 py-3 text-xs font-semibold text-[#0F172A]">{lastBy ? displayPerson(lastBy) : <span className="text-[#94A3B8]">-</span>}</td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
-                            <button type="button" title={l.status === 'Converted' ? 'View' : 'Edit / follow-up'} aria-label="Open lead" onClick={() => setProfile({ lead: l, isNew: false })} className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-blue-50 hover:text-[#2563EB]">{l.status === 'Converted' ? <Eye size={15} /> : <Pencil size={15} />}</button>
-                            {(isAdmin || l.status !== 'Converted') && <button type="button" title="Delete" aria-label="Delete lead" onClick={() => setDeleting(l)} className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
+                            <button type="button" title={l.status === 'Converted' ? 'View' : 'Edit / follow-up'} aria-label="Open lead" onClick={() => setProfile({ lead: l, isNew: false })} className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-blue-50 hover:text-[#2563EB]">{l.status === 'Converted' || !canDo('/dashboard/leads', 'edit') ? <Eye size={15} /> : <Pencil size={15} />}</button>
+                            {(isAdmin || l.status !== 'Converted') && canDo('/dashboard/leads', 'delete') && <button type="button" title="Delete" aria-label="Delete lead" onClick={() => setDeleting(l)} className="flex size-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button>}
                           </div>
                         </td>
                       </tr>

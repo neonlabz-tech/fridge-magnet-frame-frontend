@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Skeleton } from '@/components/dashboard/shared/Skeleton';
 import {
@@ -255,7 +256,8 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
             >
               <Download size={14} className="text-[#64748B]" /> Export
             </button>
-            <button
+            {canDo('/dashboard/customers','create') && (
+              <button
               type="button"
               onClick={() => setAddOpen(true)}
               style={{ fontSize: '12px' }}
@@ -263,6 +265,7 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
             >
               <Plus size={14} strokeWidth={2.5} /> Add Customer
             </button>
+            )}
           </div>
         </div>
 
@@ -413,7 +416,8 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
                           >
                             <Eye size={14} />
                           </button>
-                          <button
+                          {canDo('/dashboard/customers','edit') && (
+                            <button
                             type="button"
                             onClick={() => setEditingCustomer(c)}
                             disabled={!c.isActive}
@@ -423,7 +427,9 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
                           >
                             <Pencil size={14} />
                           </button>
-                          <button
+                          )}
+                          {canDo('/dashboard/customers','delete') && (
+                            <button
                             type="button"
                             role="switch"
                             aria-checked={c.isActive}
@@ -441,6 +447,7 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
                               }`}
                             />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -5,7 +5,7 @@ import {
   type DemoMember,
   type DemoSession,
 } from '@/lib/demoAuth';
-import { readRoles, saveRoles, type Role } from '@/lib/roles';
+import { readRoles, saveRoles, type PermissionMap, type Role } from '@/lib/roles';
 
 /**
  * Team members and roles live in the backend (MongoDB). localStorage only keeps a
@@ -51,12 +51,16 @@ const toMember = (r: RawMember): DemoMember => ({
   status: r.status === 'Inactive' ? 'Inactive' : 'Active',
   username: String(r.username ?? ''),
   password: '',
+  passwordChangedAt: r.passwordChangedAt ? String(r.passwordChangedAt) : undefined,
+  mustChangePassword: Boolean(r.mustChangePassword),
 });
 
 const toRole = (r: RawRole): Role => ({
   id: String(r.id ?? ''),
   name: String(r.name ?? ''),
   pages: Array.isArray(r.pages) ? r.pages.map(String) : [],
+  permissions: r.permissions && typeof r.permissions === 'object' ? (r.permissions as PermissionMap) : undefined,
+  widgets: Array.isArray(r.widgets) ? r.widgets.map(String) : undefined,
 });
 
 const apiError = async (res: Response, fallback: string) => {
@@ -141,7 +145,11 @@ export function refreshTeam(): Promise<TeamData> {
           await fetch(endpoint('/roles'), {
             method: 'POST',
             headers: JSON_HEADERS,
-            body: JSON.stringify({ name: r.name, pages: r.pages ?? [] }),
+            body: JSON.stringify({
+              name: r.name,
+              // Old local roles had full access to their pages: keep that.
+              permissions: r.permissions ?? Object.fromEntries((r.pages ?? []).map((h) => [h, ['view', 'create', 'edit', 'delete']])),
+            }),
           }).catch(() => null);
         }
 
@@ -217,8 +225,21 @@ export async function setMemberStatus(id: string, status: 'Active' | 'Inactive')
   await send(`/members/${encodeURIComponent(id)}/status`, 'PATCH', { status }, 'Could not change status.');
 }
 
-export async function resetMemberPassword(id: string, password: string): Promise<void> {
-  await send(`/members/${encodeURIComponent(id)}/reset-password`, 'POST', { password }, 'Could not reset password.');
+/** Admin reset: returns the temporary password (shown once, never stored in readable form). */
+export async function resetMemberPassword(id: string, password?: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(endpoint(`/members/${encodeURIComponent(id)}/reset-password`), {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(password ? { password } : {}),
+    });
+  } catch {
+    throw new Error('Could not reach the server. Nothing was saved.');
+  }
+  if (!res.ok) throw new Error(await apiError(res, 'Could not reset password.'));
+  const j = await res.json().catch(() => null);
+  return String(j?.temporaryPassword ?? password ?? '');
 }
 
 export async function deleteMember(id: string): Promise<void> {
@@ -226,11 +247,11 @@ export async function deleteMember(id: string): Promise<void> {
 }
 
 /* ---------- roles ---------- */
-export async function createRole(name: string, pages: string[]): Promise<Role> {
-  return toRole(await send<RawRole>('/roles', 'POST', { name, pages }, 'Could not create role.'));
+export async function createRole(name: string, permissions: PermissionMap, widgets: string[]): Promise<Role> {
+  return toRole(await send<RawRole>('/roles', 'POST', { name, permissions, widgets }, 'Could not create role.'));
 }
 
-export async function updateRole(id: string, patch: { name?: string; pages?: string[] }): Promise<Role> {
+export async function updateRole(id: string, patch: { name?: string; permissions?: PermissionMap; widgets?: string[] }): Promise<Role> {
   return toRole(await send<RawRole>(`/roles/${encodeURIComponent(id)}`, 'PATCH', patch, 'Could not update role.'));
 }
 
@@ -239,7 +260,9 @@ export async function deleteRole(id: string): Promise<void> {
 }
 
 /* ---------- sign-in ---------- */
-export type MemberLogin = { session: DemoSession } | { error: string; denied: boolean };
+export type MemberLogin =
+  | { session: DemoSession; token?: string; mustChangePassword?: boolean }
+  | { error: string; denied: boolean };
 
 /** Administrator sign-in: checked against the Admin collection in the database. */
 export async function loginAdmin(email: string, password: string): Promise<MemberLogin & { token?: string }> {
@@ -290,6 +313,8 @@ export async function loginMember(username: string, password: string): Promise<M
   const s = j?.session;
   if (!s) return { error: 'Unexpected response from the server.', denied: false };
   return {
+    token: String(j.token ?? j.access_token ?? ''),
+    mustChangePassword: Boolean(j.mustChangePassword),
     session: {
       username: String(s.username),
       name: String(s.name),
@@ -298,4 +323,79 @@ export async function loginMember(username: string, password: string): Promise<M
       allowedPages: Array.isArray(j.allowedPages) ? j.allowedPages.map(String) : undefined,
     },
   };
+}
+
+
+/* ---------- passwords & sign-in checks ---------- */
+export const MEMBER_TOKEN_KEY = 'memberToken';
+
+/** A team member changes their own password. Returns the fresh sign-in token (older ones are revoked). */
+export async function changeMemberPassword(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string,
+  token?: string
+): Promise<string> {
+  const bearer = token || (typeof window !== 'undefined' ? localStorage.getItem(MEMBER_TOKEN_KEY) : '') || '';
+  let res: Response;
+  try {
+    res = await fetch(endpoint('/change-password'), {
+      method: 'POST',
+      headers: { ...JSON_HEADERS, Authorization: `Bearer ${bearer}` },
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+    });
+  } catch {
+    throw new Error('Could not reach the server. Password was not changed.');
+  }
+  if (res.status === 401) throw new Error('Your sign-in has expired. Please sign in again.');
+  if (!res.ok) throw new Error(await apiError(res, 'Could not change password.'));
+  const j = await res.json().catch(() => null);
+  const next = String(j?.token ?? j?.access_token ?? '');
+  if (next) localStorage.setItem(MEMBER_TOKEN_KEY, next);
+  return next;
+}
+
+/** Administrator forgot password: e-mails a single-use link. Always answers the same (no account hints). */
+export async function adminForgotPassword(email: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(apiV1Url('/auth/admin/forgot-password'), {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ email }),
+    });
+  } catch {
+    throw new Error('Server is not reachable. Check that the backend is running.');
+  }
+  if (!res.ok) throw new Error(await apiError(res, 'Could not send the reset link right now.'));
+}
+
+export async function adminResetPassword(token: string, newPassword: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(apiV1Url('/auth/admin/reset-password'), {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ token, newPassword }),
+    });
+  } catch {
+    throw new Error('Server is not reachable. Check that the backend is running.');
+  }
+  if (!res.ok) throw new Error(await apiError(res, 'This reset link is invalid or has expired.'));
+}
+
+/** 'expired' only when the server says the token is no longer valid (401); otherwise stays signed in. */
+export async function checkSignIn(role: 'admin' | 'member'): Promise<'ok' | 'expired' | 'unknown'> {
+  try {
+    const token = localStorage.getItem(role === 'admin' ? 'adminToken' : MEMBER_TOKEN_KEY);
+    if (!token) return 'unknown';
+    const res = await fetch(role === 'admin' ? apiV1Url('/auth/profile') : endpoint('/me'), {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (res.status === 401) return 'expired';
+    return res.ok ? 'ok' : 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }

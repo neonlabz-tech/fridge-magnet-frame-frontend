@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Download, Plus, Eye, SquarePen, ChevronDown, Trash2, Boxes, TriangleAlert, CircleX } from 'lucide-react';
 import { type InventoryItem, type InventoryStatus, getInventoryStatus } from '@/types/inventory';
@@ -150,13 +151,15 @@ export default function InventoryView() {
           >
             <Download size={14} className="text-[#64748B]" /> Export
           </button>
-          <button
+          {canDo('/dashboard/inventory','create') && (
+            <button
             type="button"
             onClick={() => setModal({ mode: 'add', item: null })}
             className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#1D4ED8] sm:flex-none"
           >
             <Plus size={14} strokeWidth={2.5} /> Add Item
           </button>
+          )}
         </div>
       </div>
 
@@ -215,7 +218,8 @@ export default function InventoryView() {
                           >
                             <Eye size={15} />
                           </button>
-                          <button
+                          {canDo('/dashboard/inventory','edit') && (
+                            <button
                             type="button"
                             aria-label={`Edit ${i.name}`}
                             title="Edit"
@@ -224,7 +228,9 @@ export default function InventoryView() {
                           >
                             <SquarePen size={15} />
                           </button>
-                          <button
+                          )}
+                          {canDo('/dashboard/inventory','delete') && (
+                            <button
                             type="button"
                             aria-label={`Delete ${i.name}`}
                             title="Delete"
@@ -233,6 +239,7 @@ export default function InventoryView() {
                           >
                             <Trash2 size={15} />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

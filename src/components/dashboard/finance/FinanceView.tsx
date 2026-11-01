@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import StatCard from '@/components/dashboard/shared/StatCard';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, ArrowUp, ArrowDown, Wallet } from 'lucide-react';
@@ -30,7 +31,8 @@ export default function FinanceView() {
   }, []);
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
-  const [tab, setTab] = useState<TxKind>('income');
+  // Income / Expense tabs follow the role's per-tab View permission.
+  const [tab, setTab] = useState<TxKind>(() => (canDo('/dashboard/finance#income', 'view') ? 'income' : 'expense'));
   const [modal, setModal] = useState<{ kind: TxKind; mode: FinanceModalMode; tx: Transaction | null } | null>(null);
 
   const incomes = useMemo(() => transactions.filter((t) => t.kind === 'income'), [transactions]);
@@ -82,28 +84,31 @@ export default function FinanceView() {
           />
         </div>
         <div className="flex gap-2 sm:ml-auto">
-          <button
+          {canDo('/dashboard/finance#income','create') && (
+            <button
             type="button"
             onClick={() => setModal({ kind: 'income', mode: 'add', tx: null })}
             className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 sm:flex-none"
           >
             <Plus size={14} strokeWidth={2.5} /> Add Income
           </button>
-          <button
+          )}
+          {canDo('/dashboard/finance#expense','create') && (
+            <button
             type="button"
             onClick={() => setModal({ kind: 'expense', mode: 'add', tx: null })}
             className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-4 text-xs font-semibold text-rose-600 hover:bg-rose-100 sm:flex-none"
           >
             <Plus size={14} strokeWidth={2.5} /> Add Expense
           </button>
+          )}
         </div>
       </div>
-
       <div className="mb-3 inline-flex rounded-xl border border-[#E2E8F0] bg-white p-1">
         {([
           { key: 'income', label: 'Incomes', count: incomes.length, active: 'bg-emerald-600 text-white' },
           { key: 'expense', label: 'Expenses', count: expenses.length, active: 'bg-rose-600 text-white' },
-        ] as const).map((t) => (
+        ] as const).filter((t) => canDo(`/dashboard/finance#${t.key}`, 'view')).map((t) => (
           <button
             key={t.key}
             type="button"

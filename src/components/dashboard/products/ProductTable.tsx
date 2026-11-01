@@ -1,3 +1,4 @@
+import { canDo } from '@/lib/roles';
 import { Eye, Pencil, Trash2 } from 'lucide-react';
 import type { Product } from '@/types/product';
 import { useInventory } from '@/lib/inventoryStore';
@@ -120,7 +121,8 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onD
                       >
                         <Eye size={15} />
                       </button>
-                      <button
+                      {canDo('/dashboard/products','edit') && (
+                        <button
                         type="button"
                         aria-label={`Edit ${p.name}`}
                         title="Edit"
@@ -129,7 +131,9 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onD
                       >
                         <Pencil size={15} />
                       </button>
-                      <button
+                      )}
+                      {canDo('/dashboard/products','delete') && (
+                        <button
                         type="button"
                         aria-label={`Delete ${p.name}`}
                         title="Delete"
@@ -138,6 +142,7 @@ export default function ProductTable({ products, togglingId, onView, onEdit, onD
                       >
                         <Trash2 size={15} />
                       </button>
+                      )}
                       <button
                         type="button"
                         role="switch"

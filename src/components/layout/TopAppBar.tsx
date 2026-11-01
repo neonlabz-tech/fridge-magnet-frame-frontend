@@ -233,9 +233,10 @@ export default function TopAppBar({
             {open && (
               <div
                 className="
-      absolute right-0 top-full mt-3
+      fixed left-4 right-4 top-[68px]
+      sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-3
       z-[99999]
-      flex w-[calc(100vw-2rem)] max-w-[340px]
+      flex w-auto
       flex-col
       overflow-hidden
       rounded-2xl
@@ -246,7 +247,7 @@ export default function TopAppBar({
     "
                 style={{
                   border: "1px solid #E2E8F0",
-                  maxHeight: "min(480px, calc(100vh - 90px))",
+                  maxHeight: "min(480px, calc(100dvh - 90px))",
                   backgroundColor: "#FFFFFF",
                   opacity: 1,
                   isolation: "isolate",

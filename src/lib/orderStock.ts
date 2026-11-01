@@ -1,6 +1,6 @@
 import type { Order, OrderStatus } from '@/types/order';
 import type { InventoryItem } from '@/types/inventory';
-import { refreshInventory, writeInventory, pushInventoryChanges } from '@/lib/inventoryStore';
+import { refreshInventory, writeInventory, pushInventoryChanges, currentActorId } from '@/lib/inventoryStore';
 import { type Material, readMaterials, refreshMaterials, producibleUnits } from '@/lib/materials';
 import { apiV1Url } from '@/lib/backendUrl';
 
@@ -82,6 +82,7 @@ export async function syncOrderStock(order: Order, next: OrderStatus): Promise<s
           {
             at: now,
             role: 'Admin/Director' as const,
+            by: currentActorId(),
             change,
             totalValue: stock * inv.unitValue,
             reason: sign > 0 ? ('Used' as const) : ('Returned' as const),

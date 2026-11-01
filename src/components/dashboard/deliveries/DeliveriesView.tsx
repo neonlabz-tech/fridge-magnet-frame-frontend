@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Search,
@@ -271,13 +272,15 @@ export default function DeliveriesView() {
               >
                 <Download size={14} className="text-[#64748B]" /> Export
               </button>
-              <button
+              {canDo('/dashboard/deliveries','create') && (
+                <button
                 type="button"
                 onClick={() => setModal({ mode: 'create', delivery: null })}
                 className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#1D4ED8] lg:flex-none"
               >
                 <Plus size={14} strokeWidth={2.5} /> Create Delivery
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -356,8 +359,8 @@ export default function DeliveriesView() {
               ) : (
                 rows.map((d) => {
                   const st = STATUS_STYLE[d.status];
-                  const canEdit = d.status !== 'delivered';
-                  const canCancel = d.status === 'pending' || d.status === 'in-transit';
+                  const canEdit = d.status !== 'delivered' && canDo('/dashboard/deliveries', 'edit');
+                  const canCancel = (d.status === 'pending' || d.status === 'in-transit') && canDo('/dashboard/deliveries', 'delete');
                   return (
                     <tr key={d.id} className="transition-colors hover:bg-[#F8FAFC]/80">
                       <td className="px-4 py-3">

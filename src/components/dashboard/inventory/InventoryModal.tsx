@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Eye, Plus, Calculator, FileText, Layers, History, Square } from 'lucide-react';
+import { currentActorId } from '@/lib/inventoryStore';
 import { type InventoryItem, type StockReason, STOCK_REASONS, getInventoryStatus } from '@/types/inventory';
 import {
   ModalShell,
@@ -79,7 +80,7 @@ export default function InventoryModal({ mode, item, nextId, onClose, onSave }: 
           name: name.trim(),
           stock: stockNum,
           unitValue: unitNum,
-          history: [{ at: now, role: 'Admin/Director', change: stockNum, totalValue: total, reason: 'Initial Stock' }],
+          history: [{ at: now, role: 'Admin/Director', by: currentActorId(), change: stockNum, totalValue: total, reason: 'Initial Stock' }],
         },
         true
       );
@@ -94,7 +95,7 @@ export default function InventoryModal({ mode, item, nextId, onClose, onSave }: 
           stock: stockNum,
           unitValue: unitNum,
           history:
-            diff !== 0 ? [{ at: now, role: 'Admin/Director', change: diff, totalValue: total, reason }, ...item.history] : item.history,
+            diff !== 0 ? [{ at: now, role: 'Admin/Director', by: currentActorId(), change: diff, totalValue: total, reason }, ...item.history] : item.history,
         },
         false
       );
@@ -189,7 +190,7 @@ export default function InventoryModal({ mode, item, nextId, onClose, onSave }: 
             <table className="w-full min-w-[500px] text-left">
               <thead className="bg-[#F8FAFC]">
                 <tr>
-                  {['Date & Time', 'User Role', 'Quantity', 'Reason', 'Total Stock Value'].map((h) => (
+                  {['Date & Time', 'User ID', 'Quantity', 'Reason', 'Total Stock Value'].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-[#64748B]">
                       {h}
                     </th>
@@ -217,8 +218,8 @@ export default function InventoryModal({ mode, item, nextId, onClose, onSave }: 
                           </p>
                         </td>
                         <td className="px-3 py-2.5">
-                          <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${ROLE_STYLE[h.role]}`}>
-                            {h.role}
+                          <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${ROLE_STYLE[h.role] ?? ROLE_STYLE['Admin/Director']}`}>
+                            {h.by || h.role}
                           </span>
                         </td>
                         <td className={`px-3 py-2.5 text-xs font-bold ${h.change >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>

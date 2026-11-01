@@ -11,6 +11,7 @@ import {
   Users,
   UserCog,
   LogOut,
+  KeyRound,
   ChevronLeft,
   ChevronRight,
   Warehouse,
@@ -22,6 +23,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { DEMO_SESSION_KEY, type DemoSession } from '@/lib/demoAuth';
 import { getAllowedPages } from '@/lib/roles';
 import { useEffect, useState } from 'react';
+import ChangePasswordModal from '@/components/dashboard/account/ChangePasswordModal';
 
 const BASE_NAV_ITEMS = [
   { label: 'Overview', icon: LayoutDashboard, href: '/dashboard' },
@@ -54,6 +56,7 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [session, setSession] = useState<DemoSession | null>(null);
+  const [pwOpen, setPwOpen] = useState(false);
 
   useEffect(() => {
     const savedSession = localStorage.getItem(DEMO_SESSION_KEY);
@@ -79,6 +82,7 @@ export default function Sidebar({
   const handleLogout = () => {
     localStorage.removeItem(DEMO_SESSION_KEY);
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('memberToken');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
 
@@ -94,11 +98,10 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 flex flex-col transition-[transform,width] duration-300 ${
+      className={`fixed left-0 top-0 z-40 flex h-screen h-dvh flex-col transition-[transform,width] duration-300 ${
         open ? 'translate-x-0' : '-translate-x-full'
       } lg:translate-x-0 w-[252px] ${collapsed ? 'lg:w-[76px]' : 'lg:w-[252px]'}`}
       style={{
-        height: '100vh',
         background: 'linear-gradient(180deg, #0B2F8F 0%, #071C40 55%, #05142F 100%)',
         borderRight: '1px solid rgba(255,255,255,0.06)',
       }}
@@ -147,7 +150,7 @@ export default function Sidebar({
       </button>
 
       {/* Navigation */}
-      <nav className="flex flex-1 flex-col gap-1 pt-[25px]">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pt-[25px]">
         {[...navItems.slice(0, baseCount), ...(navItems.length > baseCount ? [null] : []), ...navItems.slice(baseCount)].map((item) => {
           if (!item) {
             return (
@@ -208,7 +211,21 @@ export default function Sidebar({
       </nav>
 
       {/* Logout */}
-      <div className="px-4 py-4">
+      <div className="flex-shrink-0 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {session?.role === 'member' && (
+          <button
+            type="button"
+            onClick={() => setPwOpen(true)}
+            title="Change password"
+            className={`group mb-1 flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-3 transition-colors hover:border-white/30 hover:bg-white/10 ${collapsed ? 'lg:justify-center lg:px-0' : ''}`}
+          >
+            <KeyRound size={18} className="flex-shrink-0 text-white" />
+            <span className={`text-[14px] font-semibold text-white ${collapsed ? 'lg:hidden' : ''}`}>
+              Change password
+            </span>
+          </button>
+        )}
+        <ChangePasswordModal open={pwOpen} onClose={() => setPwOpen(false)} />
         <button
           onClick={handleLogout}
           title="Logout"

@@ -23,6 +23,7 @@ const TABS: { value: OrderFilterStatus; label: string }[] = [
   { value: 'all', label: 'All Orders' },
   { value: 'pending', label: 'Pending' },
   { value: 'processing', label: 'Processing' },
+  { value: 'shipped', label: 'Shipped' },
   { value: 'delivered', label: 'Completed' },
   { value: 'canceled', label: 'Cancelled' },
 ];
