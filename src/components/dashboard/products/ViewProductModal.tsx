@@ -17,6 +17,7 @@ import {
 import type { Product } from '@/types/product';
 import { apiV1Url } from '@/lib/backendUrl';
 import { useInventory } from '@/lib/inventoryStore';
+import { canSeeProductField } from '@/lib/roles';
 import { readMaterials, materialCost, useMaterialsSync } from '@/lib/materials';
 
 interface ViewProductModalProps {
@@ -302,21 +303,25 @@ export default function ViewProductModal({
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-200">Selling price</p>
                     <p className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{lkr(price)}</p>
                   </div>
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${unitProfit >= 0 ? 'bg-emerald-400/20 text-emerald-200' : 'bg-rose-400/20 text-rose-200'}`}>
-                    <TrendingUp size={13} className={unitProfit < 0 ? 'rotate-180' : ''} />
-                    {margin.toFixed(1)}% margin
-                  </span>
+                  {canSeeProductField('profit') && (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${unitProfit >= 0 ? 'bg-emerald-400/20 text-emerald-200' : 'bg-rose-400/20 text-rose-200'}`}>
+                      <TrendingUp size={13} className={unitProfit < 0 ? 'rotate-180' : ''} />
+                      {margin.toFixed(1)}% margin
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <ProductInfo icon={Wallet} label="Manufacture cost" value={lkr(manufactureCost)} />
-                <ProductInfo
-                  icon={TrendingUp}
-                  label="Unit profit"
-                  value={`${unitProfit >= 0 ? '+' : '-'}${lkr(Math.abs(unitProfit))}`}
-                  tone={unitProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}
-                />
+                {canSeeProductField('cost') && <ProductInfo icon={Wallet} label="Manufacture cost" value={lkr(manufactureCost)} />}
+                {canSeeProductField('profit') && (
+                  <ProductInfo
+                    icon={TrendingUp}
+                    label="Unit profit"
+                    value={`${unitProfit >= 0 ? '+' : '-'}${lkr(Math.abs(unitProfit))}`}
+                    tone={unitProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+                  />
+                )}
                 <ProductInfo icon={Boxes} label="In stock" value={`${currentStock} units`} tone={statusTone.text} />
               </div>
 

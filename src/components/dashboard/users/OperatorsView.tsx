@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Eye, EyeOff, KeyRound, Pencil, Plus, Search, ShieldCheck, Trash2, UserCheck, UserPlus, UserX, Users, Wand2 } from 'lucide-react';
 import { useToastStore } from '@/store/toastStore';
+import { passwordIssue, PASSWORD_HINT } from '@/lib/password';
 import { DEMO_SESSION_KEY, type DemoMember, type DemoSession } from '@/lib/demoAuth';
 import RolesPanel from './RolesPanel';
-import { DEFAULT_ROLE_NAME, readRoles, type Role } from '@/lib/roles';
+import { DEFAULT_ROLE_NAME, readRoles, type PermissionMap, type Role } from '@/lib/roles';
 import {
   createMember,
   createRole,
@@ -116,10 +117,10 @@ export default function OperatorsView() {
 
   const fail = (e: unknown, fallback: string) => addToast(e instanceof Error ? e.message : fallback, 'error');
 
-  const saveRole = async (editingRole: Role | null, name: string, pages: string[]) => {
+  const saveRole = async (editingRole: Role | null, name: string, permissions: PermissionMap, widgets: string[]) => {
     try {
-      if (editingRole) await updateRole(editingRole.id, { name, pages });
-      else await createRole(name, pages);
+      if (editingRole) await updateRole(editingRole.id, { name, permissions, widgets });
+      else await createRole(name, permissions, widgets);
       await reload();
       addToast(editingRole ? 'Role updated.' : 'Role created.', 'success');
       return true;
@@ -208,7 +209,8 @@ export default function OperatorsView() {
     if (!form.phone.trim()) e.phone = 'Phone number is required.';
     else if (!/^\d{10}$/.test(form.phone.trim())) e.phone = 'Phone number must be exactly 10 digits (e.g. 0771234567).';
     if (!editing || form.password) {
-      if (form.password.length < 6) e.password = 'At least 6 characters.';
+      const issue = passwordIssue(form.password);
+      if (issue) e.password = issue;
       if (form.confirm !== form.password) e.confirm = 'Passwords do not match.';
     }
     if (members.some((m) => m.email.toLowerCase() === form.email.trim().toLowerCase() && m.id !== editing?.id))
@@ -259,10 +261,13 @@ export default function OperatorsView() {
 
   const doReset = async () => {
     if (!resetting) return;
-    if (resetPw.length < 6) return addToast('Password must be at least 6 characters.', 'error');
+    const issue = resetPw ? passwordIssue(resetPw) : null;
+    if (issue) return addToast(issue, 'error');
     try {
-      await resetMemberPassword(resetting.id, resetPw);
-      setCreds({ name: resetting.name, username: resetting.username, password: resetPw });
+      // Empty = the server generates a temporary password. It is shown once and never stored in readable form.
+      const temp = await resetMemberPassword(resetting.id, resetPw || undefined);
+      await reload();
+      setCreds({ name: resetting.name, username: resetting.username, password: temp });
       setResetting(null);
       setResetPw('');
     } catch (e) {
@@ -352,7 +357,7 @@ export default function OperatorsView() {
           <table className="w-full min-w-[860px] border-collapse text-left">
             <thead>
               <tr className="bg-[#F8FAFC]">
-                {['Member ID', 'Name', 'Contact', 'Username', 'Role', 'Joined', 'Status'].map((h) => (
+                {['Member ID', 'Name', 'Contact', 'Username', 'Role', 'Password', 'Joined', 'Status'].map((h) => (
                   <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#64748B]">{h}</th>
                 ))}
                 <th className="sticky right-0 z-[1] bg-[#F8FAFC] px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-[#64748B] md:static">Actions</th>
@@ -361,11 +366,11 @@ export default function OperatorsView() {
             <tbody className="divide-y divide-[#F1F5F9]">
               {!loaded ? (
                 Array.from({ length: 4 }).map((_, i) => (
-                  <tr key={i}><td colSpan={8} className="px-4 py-4"><div className="h-4 animate-pulse rounded bg-slate-200/80" /></td></tr>
+                  <tr key={i}><td colSpan={9} className="px-4 py-4"><div className="h-4 animate-pulse rounded bg-slate-200/80" /></td></tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-14 text-center text-xs text-[#94A3B8]">
+                  <td colSpan={9} className="py-14 text-center text-xs text-[#94A3B8]">
                     {members.length === 0 ? 'No users yet. Click "Add User" to create one.' : 'No users match your filters.'}
                   </td>
                 </tr>
@@ -382,6 +387,15 @@ export default function OperatorsView() {
                     <td className="px-4 py-3"><p className="text-xs text-[#0F172A]">{m.email}</p><p className="text-xs text-[#94A3B8]">{m.phone}</p></td>
                     <td className="px-4 py-3 text-xs font-semibold text-[#0F172A]">{m.username}</td>
                     <td className="px-4 py-3"><span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-600">{m.role}</span></td>
+                    <td className="px-4 py-3">
+                      <p className="text-xs font-bold tracking-widest text-[#0F172A]">********</p>
+                      <p className="text-xs text-[#94A3B8]">
+                        {m.passwordChangedAt ? `Changed ${new Date(m.passwordChangedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'Changed date unknown'}
+                      </p>
+                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${m.mustChangePassword ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        {m.mustChangePassword ? 'Reset pending' : 'Set by user'}
+                      </span>
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-[#64748B]">{m.joinDate}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${m.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{m.status}</span>
@@ -470,7 +484,7 @@ export default function OperatorsView() {
                 </button>
               </div>
               <div className="relative">
-                <input type={showPw ? 'text' : 'password'} className={`${inputCls} pr-9 ${bd(errors.password)}`} value={form.password} placeholder="At least 6 characters" autoComplete="new-password" onChange={(e) => set('password', e.target.value)} />
+                <input type={showPw ? 'text' : 'password'} className={`${inputCls} pr-9 ${bd(errors.password)}`} value={form.password} placeholder="8+ chars, upper, lower, number" autoComplete="new-password" onChange={(e) => set('password', e.target.value)} />
                 <button type="button" aria-label={showPw ? 'Hide password' : 'Show password'} onClick={() => setShowPw((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#94A3B8]">
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -498,7 +512,7 @@ export default function OperatorsView() {
         onClose={() => setCreds(null)}
         icon={<KeyRound size={18} />}
         title="Share login details"
-        subtitle={creds ? `Give these to ${creds.name}. They can sign in on the login page.` : ''}
+        subtitle={creds ? `Give these to ${creds.name}. This password is shown only now, and they must choose their own at first sign-in.` : ''}
         maxWidth="max-w-sm"
         footer={<button type="button" onClick={() => setCreds(null)} className={btnPrimary}>Done</button>}
       >
@@ -532,16 +546,19 @@ export default function OperatorsView() {
         footer={
           <>
             <button type="button" onClick={() => setResetting(null)} className={btnGhost}>Cancel</button>
-            <button type="button" onClick={doReset} className={btnPrimary}>Save password</button>
+            <button type="button" onClick={doReset} className={btnPrimary}>Reset password</button>
           </>
         }
       >
         <div className="pt-1">
-          <label className={labelCls}>New password</label>
+          <label className={labelCls}>Temporary password</label>
           <div className="flex gap-2">
-            <input className={inputCls} value={resetPw} onChange={(e) => setResetPw(e.target.value)} />
+            <input className={inputCls} value={resetPw} placeholder="Leave empty to generate one" onChange={(e) => setResetPw(e.target.value)} />
             <button type="button" onClick={() => setResetPw(genPassword())} className={btnGhost}><Wand2 size={13} /></button>
           </div>
+          <p className="mt-2 text-xs leading-5 text-[#94A3B8]">
+            {PASSWORD_HINT} The user must replace it at next sign-in, and their current sign-ins are signed out. You will never be able to view it again.
+          </p>
         </div>
       </ModalShell>
 

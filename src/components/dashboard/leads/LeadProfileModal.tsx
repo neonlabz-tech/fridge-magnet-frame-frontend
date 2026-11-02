@@ -42,6 +42,7 @@ export default function LeadProfileModal({
   onClose,
   onSave,
   onDelete,
+  onNewOrder,
 }: {
   open: boolean;
   lead: Lead | null;
@@ -54,6 +55,8 @@ export default function LeadProfileModal({
   onClose: () => void;
   onSave: (r: ProfileSave) => void;
   onDelete: (l: Lead) => void;
+  /** Converted client: create another order (e.g. the next day). */
+  onNewOrder?: (l: Lead) => void;
 }) {
   const [d, setD] = useState<Lead | null>(null);
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
@@ -165,6 +168,11 @@ export default function LeadProfileModal({
           {(isAdmin || lead.status !== 'Converted') && !isNew && (
             <button type="button" onClick={() => onDelete(lead)} className="inline-flex h-9 items-center rounded-lg border border-rose-200 bg-white px-4 text-xs font-semibold text-rose-600 hover:bg-rose-50">
               Delete lead
+            </button>
+          )}
+          {wasConverted && !isNew && onNewOrder && (
+            <button type="button" onClick={() => onNewOrder(lead)} className="inline-flex h-9 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+              + New order for this client
             </button>
           )}
           <span className="flex-1" />

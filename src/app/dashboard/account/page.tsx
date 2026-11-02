@@ -3,10 +3,13 @@
 import { useEffect, useState } from 'react';
 import AccountHeader from '@/components/dashboard/account/AccountHeader';
 import ProfileInformationCard from '@/components/dashboard/account/ProfileInformationCard';
+import MemberPasswordCard from '@/components/dashboard/account/MemberPasswordCard';
 import SecurityCard, {
   type PasswordFields,
 } from '@/components/dashboard/account/SecurityCard';
 import AccountActions from '@/components/dashboard/account/AccountActions';
+import { readSession } from '@/lib/crm';
+import { passwordIssue } from '@/lib/password';
 import { useAccount, type AccountProfile } from '@/hooks/useAccount';
 import { useToastStore } from '@/store/toastStore';
 
@@ -24,6 +27,12 @@ export default function AccountPage() {
   const [passwords, setPasswords] = useState<PasswordFields>(EMPTY_PASSWORDS);
   const [saving, setSaving] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // Team members have no admin profile and cannot change their password here.
+  const [isMember, setIsMember] = useState(false);
+
+  useEffect(() => {
+    setIsMember(readSession()?.role === 'member');
+  }, []);
 
   useEffect(() => {
     if (isLoaded && !hydrated) {
@@ -33,8 +42,8 @@ export default function AccountPage() {
   }, [isLoaded, hydrated, profile]);
 
   useEffect(() => {
-    if (error) addToast(error, 'info');
-  }, [error, addToast]);
+    if (error && !isMember) addToast(error, 'info');
+  }, [error, isMember, addToast]);
 
   const updateForm = (patch: Partial<AccountProfile>) =>
     setForm((prev) => ({ ...prev, ...patch }));
@@ -69,8 +78,9 @@ export default function AccountPage() {
         addToast('Enter your current password to set a new one.', 'error');
         return;
       }
-      if (passwords.newPassword.length < 6) {
-        addToast('New password must be at least 6 characters.', 'error');
+      const issue = passwordIssue(passwords.newPassword);
+      if (issue) {
+        addToast(issue, 'error');
         return;
       }
       if (passwords.newPassword !== passwords.confirmPassword) {
@@ -111,6 +121,15 @@ export default function AccountPage() {
     <div className="h-full w-full overflow-y-auto bg-white px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
       <AccountHeader />
 
+      {isMember ? (
+        <div className="mx-auto mt-4 flex w-full max-w-md flex-col items-center">
+          <MemberPasswordCard />
+          <p className="mt-3 text-center text-xs text-[#64748B]">
+            If you forget your password, ask your administrator to reset it.
+          </p>
+        </div>
+      ) : (
+      <>
       <div className="flex flex-col gap-4 sm:gap-6 md:flex-row md:items-start">
         <ProfileInformationCard
           profile={form}
@@ -134,6 +153,8 @@ export default function AccountPage() {
         onCancel={handleCancel}
         onSave={handleSave}
       />
+      </>
+      )}
     </div>
   );
 }

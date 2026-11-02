@@ -77,6 +77,7 @@ export const mapApiOrder = (order: ApiOrder): Order => {
     "Customer";
 
   const rawAny = order as Record<string, unknown>;
+  const itemsSum = (order.items ?? []).reduce((n, it) => n + Number(it.price ?? 0) * Number(it.quantity ?? 1), 0);
 
   return {
     id: order._id || order.id || order.orderId,
@@ -97,11 +98,11 @@ export const mapApiOrder = (order: ApiOrder): Order => {
     paymentSlipUrl: (rawAny.paymentSlipUrl as string) || undefined,
     preferredLanguage: (rawAny.preferredLanguage as "Tamil" | "English") || "Tamil",
     allPhotosReceived: (rawAny.allPhotosReceived as boolean) ?? true,
-    email: order.email,
+    email: order.email?.endsWith('@manual.magnify.local') ? '' : order.email,
     phone: order.phone,
     totalValue: order.totalValue,
-    subtotal: (rawAny.subtotal as number) ?? (order.totalValue ? Math.max(0, order.totalValue - 350) : 0),
-    deliveryFee: (rawAny.deliveryFee as number) ?? 350,
+    subtotal: (rawAny.subtotal as number) ?? itemsSum,
+    deliveryFee: (rawAny.deliveryFee as number) ?? (itemsSum > 0 ? Math.max(0, Number(order.totalValue ?? 0) - itemsSum) : 0),
     discount: (rawAny.discount as number) ?? 0,
     district: (rawAny.district as string) || "Jaffna",
     city: (rawAny.city as string) || "",

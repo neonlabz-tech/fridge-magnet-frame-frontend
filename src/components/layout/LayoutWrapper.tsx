@@ -29,7 +29,7 @@ export default function LayoutWrapper({
 
   return (
     <div
-      className="h-screen overflow-hidden bg-[#F8FAFD]"
+      className="h-screen h-dvh overflow-hidden bg-[#F8FAFD]"
       style={{ ["--sb" as string]: collapsed ? "76px" : "252px" }}
     >
       <TopAppBar onMenuClick={() => setSidebarOpen((v) => !v)} />
@@ -52,7 +52,7 @@ export default function LayoutWrapper({
         className="dashboard-main flex flex-col overflow-y-auto lg:ml-[var(--sb)] transition-[margin] duration-300"
         style={{
           marginTop: 64,
-          height: "calc(100vh - 64px)",
+          height: "calc(100dvh - 64px)",
           backgroundColor: "#F8FAFD",
         }}
       >

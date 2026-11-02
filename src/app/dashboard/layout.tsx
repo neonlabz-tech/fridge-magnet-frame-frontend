@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import LayoutWrapper from '@/components/layout/LayoutWrapper'
 import { DEMO_SESSION_KEY, type DemoSession } from '@/lib/demoAuth'
 import { getAllowedPages, isPathAllowed, PAGE_OPTIONS } from '@/lib/roles'
-import { refreshTeam } from '@/lib/teamApi'
+import { checkSignIn, refreshTeam } from '@/lib/teamApi'
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
@@ -21,6 +21,21 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     refreshTeam().then(() => alive && setTeamTick((t) => t + 1))
     return () => {
       alive = false
+    }
+  }, [])
+
+  // Permission changes made by an admin reach open sessions when the window regains focus (and every 2 minutes).
+  useEffect(() => {
+    let alive = true
+    const sync = () => {
+      refreshTeam().then(() => alive && setTeamTick((t) => t + 1))
+    }
+    window.addEventListener('focus', sync)
+    const timer = window.setInterval(sync, 120000)
+    return () => {
+      alive = false
+      window.removeEventListener('focus', sync)
+      window.clearInterval(timer)
     }
   }, [])
 
@@ -60,6 +75,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     setCheckedSession(true)
     router.replace('/login')
   }, [pathname, router, teamTick])
+
+  // After a password change/reset the server revokes older sign-ins: sign out here when that happens.
+  const role = session?.role
+  useEffect(() => {
+    if (!role) return
+    let alive = true
+    const verify = async () => {
+      if ((await checkSignIn(role)) !== 'expired' || !alive) return
+      ;['adminToken', 'memberToken', 'token', 'user', DEMO_SESSION_KEY].forEach((k) => localStorage.removeItem(k))
+      document.cookie = 'demoAuth=; path=/; max-age=0; samesite=lax'
+      router.replace('/login')
+    }
+    void verify()
+    window.addEventListener('focus', verify)
+    return () => {
+      alive = false
+      window.removeEventListener('focus', verify)
+    }
+  }, [role, router])
 
   if (!checkedSession || !session) return null
   return <LayoutWrapper>{children}</LayoutWrapper>

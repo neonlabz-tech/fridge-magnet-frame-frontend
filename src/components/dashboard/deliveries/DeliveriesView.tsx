@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Search,
@@ -134,14 +135,6 @@ export default function DeliveriesView() {
     }
   };
 
-  const handleExport = () => {
-    if (filtered.length === 0) return addToast('No deliveries to export.', 'error');
-    downloadCsv('deliveries.csv', [
-      ['Delivery ID', 'Order ID', 'Type', 'Tracking ID', 'Delivery Person', 'Place', 'Status'],
-      ...filtered.map((d) => [d.id, d.orderId, d.method, d.tracking, d.driver || '-', d.place, STATUS_STYLE[d.status].label]),
-    ]);
-  };
-
   /* ---------- bulk actions (on the ticked rows) ---------- */
   const chosen = deliveries.filter((d) => selected.has(d.id));
   const clearSelection = () => setSelected(new Set());
@@ -264,20 +257,15 @@ export default function DeliveriesView() {
               </Select>
             </div>
             <div className="flex gap-2 lg:ml-auto">
-              <button
-                type="button"
-                onClick={handleExport}
-                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#334155] shadow-xs hover:bg-slate-50 lg:flex-none"
-              >
-                <Download size={14} className="text-[#64748B]" /> Export
-              </button>
-              <button
+              {canDo('/dashboard/deliveries','create') && (
+                <button
                 type="button"
                 onClick={() => setModal({ mode: 'create', delivery: null })}
                 className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#1D4ED8] lg:flex-none"
               >
                 <Plus size={14} strokeWidth={2.5} /> Create Delivery
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -356,8 +344,8 @@ export default function DeliveriesView() {
               ) : (
                 rows.map((d) => {
                   const st = STATUS_STYLE[d.status];
-                  const canEdit = d.status !== 'delivered';
-                  const canCancel = d.status === 'pending' || d.status === 'in-transit';
+                  const canEdit = d.status !== 'delivered' && canDo('/dashboard/deliveries', 'edit');
+                  const canCancel = (d.status === 'pending' || d.status === 'in-transit') && canDo('/dashboard/deliveries', 'delete');
                   return (
                     <tr key={d.id} className="transition-colors hover:bg-[#F8FAFC]/80">
                       <td className="px-4 py-3">

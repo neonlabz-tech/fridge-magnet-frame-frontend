@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LockKeyhole, UserRound } from 'lucide-react';
 import {
@@ -8,7 +9,8 @@ import {
   DEMO_SESSION_KEY,
   type DemoSession,
 } from '@/lib/demoAuth';
-import { loginAdmin, loginMember } from '@/lib/teamApi';
+import { changeMemberPassword, loginAdmin, loginMember, MEMBER_TOKEN_KEY } from '@/lib/teamApi';
+import { PASSWORD_HINT, passwordIssue } from '@/lib/password';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +19,34 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // A team member signing in with an admin-set (temporary) password must choose their own first.
+  const [pending, setPending] = useState<{ session: DemoSession; token: string } | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const enter = (session: DemoSession) => {
+    localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
+    document.cookie = 'demoAuth=1; path=/; samesite=lax';
+    router.replace('/dashboard');
+  };
+
+  const handleChange = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!pending) return;
+    setError('');
+    const issue = passwordIssue(newPassword);
+    if (issue) return setError(issue);
+    if (newPassword !== confirmPassword) return setError('New password and confirmation do not match.');
+    setBusy(true);
+    try {
+      await changeMemberPassword(password, newPassword, confirmPassword, pending.token);
+      enter(pending.session);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not change password.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,6 +71,7 @@ export default function LoginPage() {
         const result = await loginMember(u, password);
         if ('session' in result) {
           session = result.session;
+          if (result.token) localStorage.setItem(MEMBER_TOKEN_KEY, result.token);
         } else {
           // Old local accounts that have not been uploaded to the backend yet.
           session = result.denied ? authenticateDemoUser(u, password) : null;
@@ -51,9 +82,7 @@ export default function LoginPage() {
         }
       }
 
-      localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
-      document.cookie = 'demoAuth=1; path=/; samesite=lax';
-      router.replace('/dashboard');
+      enter(session);
     } catch (loginError) {
       setError(
         loginError instanceof Error
@@ -83,9 +112,51 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {pending ? (
+        <form onSubmit={handleChange} className="space-y-5">
+          <p className="rounded-lg bg-[#EFF6FF] px-3 py-2.5 text-sm text-[#1D4ED8]">
+            Your administrator gave you a temporary password. Choose your own password to continue.
+          </p>
+          {([['New password', newPassword, setNewPassword], ['Confirm new password', confirmPassword, setConfirmPassword]] as const).map(([label, value, setter]) => (
+            <label key={label} className="block text-sm font-semibold text-[#334155]">
+              {label}
+              <span className="mt-1.5 flex h-12 items-center gap-3 rounded-xl border border-[#CBD5E1] px-3 focus-within:border-[#2563EB]">
+                <LockKeyhole size={18} className="text-[#94A3B8]" />
+                <input
+                  required
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={value}
+                  onChange={(event) => setter(event.target.value)}
+                  className="w-full bg-transparent text-sm font-normal outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="text-[#64748B]"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </span>
+            </label>
+          ))}
+          <p className="text-xs text-[#64748B]">{PASSWORD_HINT}</p>
+          {error && (
+            <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          )}
+          <button
+            type="submit"
+            disabled={busy}
+            className="h-12 w-full rounded-xl bg-[#2563EB] text-sm font-bold text-white transition hover:bg-[#1D4ED8] disabled:opacity-60"
+          >
+            {busy ? 'Saving...' : 'Save password and continue'}
+          </button>
+        </form>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
           <label className="block text-sm font-semibold text-[#334155]">
-            Email or username
+            Email or Username
             <span className="mt-1.5 flex h-12 items-center gap-3 rounded-xl border border-[#CBD5E1] px-3 focus-within:border-[#2563EB]">
               <UserRound size={18} className="text-[#94A3B8]" />
               <input
@@ -93,7 +164,7 @@ export default function LoginPage() {
                 autoComplete="username"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder="Admin email or your username"
+                placeholder="Email or Username"
                 className="w-full bg-transparent text-sm font-normal outline-none"
               />
             </span>
@@ -136,7 +207,13 @@ export default function LoginPage() {
           >
             {busy ? 'Signing in...' : 'Sign in'}
           </button>
+          {username.includes('@') && (
+            <p className="text-center text-xs">
+              <Link href="/forgot-password" className="font-semibold text-[#2563EB] hover:underline">Forgot password?</Link>
+            </p>
+          )}
         </form>
+        )}
 
       </section>
     </main>
