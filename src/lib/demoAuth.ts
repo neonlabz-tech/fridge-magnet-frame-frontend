@@ -11,6 +11,10 @@ export interface DemoMember {
   status: 'Active' | 'Inactive';
   username: string;
   password: string;
+  /** ISO date the password was last set/changed (never the password itself). */
+  passwordChangedAt?: string;
+  /** true while the user still has to replace an admin-set (temporary) password. */
+  mustChangePassword?: boolean;
 }
 
 export interface DemoTeam {

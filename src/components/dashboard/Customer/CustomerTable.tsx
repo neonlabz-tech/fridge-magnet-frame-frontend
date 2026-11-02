@@ -1,10 +1,10 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Skeleton } from '@/components/dashboard/shared/Skeleton';
 import {
   Search,
-  Download,
   Plus,
   Eye,
   Pencil,
@@ -148,29 +148,6 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
 
   const tableCustomers = isFiltering ? filteredAllCustomers : currentPageCustomers;
 
-  const handleDownload = async () => {
-    if (allCustomers.length === 0) await fetchAllCustomers();
-    const rows = filteredAllCustomers;
-    if (rows.length === 0) return;
-
-    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const csv = [
-      ['Customer ID', 'Customer Name', 'Email Address', 'Phone Number', 'Customer Address', 'Status'],
-      ...rows.map((c) => [c.id, c.name, c.email, c.phone, c.address, c.isActive ? 'Enable' : 'Disable']),
-    ]
-      .map((row) => row.map(esc).join(','))
-      .join('\n');
-
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'customers.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const changeStatus = async (customer: CustomerRow) => {
     setUpdatingStatusId(customer.id);
     setStatusError(null);
@@ -246,16 +223,8 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
           </div>
 
           <div className="flex items-center gap-2 sm:ml-auto">
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={filteredAllCustomers.length === 0 || allCustomersLoading}
-              style={{ fontSize: '12px' }}
-              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#334155] shadow-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-            >
-              <Download size={14} className="text-[#64748B]" /> Export
-            </button>
-            <button
+            {canDo('/dashboard/customers','create') && (
+              <button
               type="button"
               onClick={() => setAddOpen(true)}
               style={{ fontSize: '12px' }}
@@ -263,6 +232,7 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
             >
               <Plus size={14} strokeWidth={2.5} /> Add Customer
             </button>
+            )}
           </div>
         </div>
 
@@ -413,7 +383,8 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
                           >
                             <Eye size={14} />
                           </button>
-                          <button
+                          {canDo('/dashboard/customers','edit') && (
+                            <button
                             type="button"
                             onClick={() => setEditingCustomer(c)}
                             disabled={!c.isActive}
@@ -423,7 +394,9 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
                           >
                             <Pencil size={14} />
                           </button>
-                          <button
+                          )}
+                          {canDo('/dashboard/customers','delete') && (
+                            <button
                             type="button"
                             role="switch"
                             aria-checked={c.isActive}
@@ -441,6 +414,7 @@ const CustomerTable = ({ onCustomersChanged }: CustomerTableProps) => {
                               }`}
                             />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

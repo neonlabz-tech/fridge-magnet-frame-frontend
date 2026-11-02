@@ -1,7 +1,8 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Download, Plus, Eye, SquarePen, ChevronDown, Trash2, Boxes, TriangleAlert, CircleX } from 'lucide-react';
+import { Search, Plus, Eye, SquarePen, ChevronDown, Trash2, Boxes, TriangleAlert, CircleX } from 'lucide-react';
 import { type InventoryItem, type InventoryStatus, getInventoryStatus } from '@/types/inventory';
 import { readInventory, refreshInventory, saveInventoryItem, deleteInventoryItem } from '@/lib/inventoryStore';
 import { useToastStore } from '@/store/toastStore';
@@ -90,14 +91,6 @@ export default function InventoryView() {
     setDeleting(null);
   };
 
-  const handleExport = () => {
-    if (!filtered.length) return addToast('No items to export.', 'error');
-    downloadCsv('inventory.csv', [
-      ['Item ID', 'Item Name', 'Stock', 'Status', 'Unit Value (LKR)', 'Total Value (LKR)'],
-      ...filtered.map((i) => [i.id, i.name, i.stock, STATUS_META[getInventoryStatus(i.stock)].label, i.unitValue, i.stock * i.unitValue]),
-    ]);
-  };
-
   return (
     <>
       <div className="mb-4">
@@ -143,20 +136,15 @@ export default function InventoryView() {
           <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
         </div>
         <div className="flex gap-2 sm:ml-auto">
-          <button
-            type="button"
-            onClick={handleExport}
-            className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#334155] shadow-xs hover:bg-slate-50 sm:flex-none"
-          >
-            <Download size={14} className="text-[#64748B]" /> Export
-          </button>
-          <button
+          {canDo('/dashboard/inventory','create') && (
+            <button
             type="button"
             onClick={() => setModal({ mode: 'add', item: null })}
             className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#1D4ED8] sm:flex-none"
           >
             <Plus size={14} strokeWidth={2.5} /> Add Item
           </button>
+          )}
         </div>
       </div>
 
@@ -215,7 +203,8 @@ export default function InventoryView() {
                           >
                             <Eye size={15} />
                           </button>
-                          <button
+                          {canDo('/dashboard/inventory','edit') && (
+                            <button
                             type="button"
                             aria-label={`Edit ${i.name}`}
                             title="Edit"
@@ -224,7 +213,9 @@ export default function InventoryView() {
                           >
                             <SquarePen size={15} />
                           </button>
-                          <button
+                          )}
+                          {canDo('/dashboard/inventory','delete') && (
+                            <button
                             type="button"
                             aria-label={`Delete ${i.name}`}
                             title="Delete"
@@ -233,6 +224,7 @@ export default function InventoryView() {
                           >
                             <Trash2 size={15} />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

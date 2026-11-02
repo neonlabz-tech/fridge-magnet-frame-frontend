@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { useEffect, useMemo, useState } from 'react';
 import { Eye, Pencil, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import type { Transaction, TxKind, TxMethod } from '@/types/finance';
@@ -150,7 +151,8 @@ export default function TransactionCard({
                       >
                         <Eye size={14} />
                       </button>
-                      <button
+                      {canDo(`/dashboard/finance#${t.kind}`,'edit') && (
+                        <button
                         type="button"
                         aria-label="Edit"
                         title="Edit"
@@ -159,7 +161,9 @@ export default function TransactionCard({
                       >
                         <Pencil size={14} />
                       </button>
-                      <button
+                      )}
+                      {canDo(`/dashboard/finance#${t.kind}`,'delete') && (
+                        <button
                         type="button"
                         aria-label="Delete"
                         title="Delete"
@@ -168,6 +172,7 @@ export default function TransactionCard({
                       >
                         <Trash2 size={14} />
                       </button>
+                      )}
                     </div>
                   </td>
                 </tr>

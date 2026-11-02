@@ -6,6 +6,8 @@ export type StockReason = (typeof STOCK_REASONS)[number];
 export interface StockLogEntry {
   at: string; // ISO
   role: 'Admin/Director' | 'Warehouse Lead' | 'Purchasing Manager';
+  /** Login id of whoever made the change, e.g. BO001 or admin. */
+  by?: string;
   change: number; // +50 / -20
   totalValue: number; // stock value after change
   reason?: StockReason;

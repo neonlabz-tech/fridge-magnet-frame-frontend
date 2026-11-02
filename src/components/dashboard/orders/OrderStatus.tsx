@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import {
@@ -292,7 +293,8 @@ export default function OrderStatus({
                         type="text"
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
-                        className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                        disabled={!canDo('/dashboard/orders', 'edit')}
+                        className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]"
                         style={{ fontSize: '12px' }}
                       />
                     </div>
@@ -307,7 +309,8 @@ export default function OrderStatus({
                           type="text"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
-                          className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                          disabled={!canDo('/dashboard/orders', 'edit')}
+                          className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]"
                           style={{ fontSize: '12px' }}
                         />
                       </div>
@@ -320,7 +323,8 @@ export default function OrderStatus({
                           type="email"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                          disabled={!canDo('/dashboard/orders', 'edit')}
+                          className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 px-3 text-[12px] font-semibold text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]"
                           style={{ fontSize: '12px' }}
                         />
                       </div>
@@ -335,7 +339,8 @@ export default function OrderStatus({
                         rows={2}
                         value={shippingAddress}
                         onChange={(e) => setShippingAddress(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 p-2.5 text-[12px] font-medium text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none"
+                        disabled={!canDo('/dashboard/orders', 'edit')}
+                        className="mt-1 w-full rounded-xl border border-[#E2E8F0] bg-slate-50/50 p-2.5 text-[12px] font-medium text-[#0F172A] focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]"
                         style={{ fontSize: '12px' }}
                       />
                     </div>
@@ -483,7 +488,8 @@ export default function OrderStatus({
                       <select
                         value={orderStatus}
                         onChange={(e) => setOrderStatus(e.target.value as OrderStatusType)}
-                        className="h-10 w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[12px] font-bold text-[#0F172A] capitalize focus:border-[#2563EB] focus:outline-none"
+                        disabled={!canDo('/dashboard/orders', 'edit')}
+                        className="h-10 w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[12px] font-bold text-[#0F172A] capitalize focus:border-[#2563EB] focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-[#94A3B8]"
                         style={{ fontSize: '12px' }}
                       >
                         {ORDER_STATUSES.map((st) => (
@@ -508,7 +514,8 @@ export default function OrderStatus({
                       <select
                         value={paymentStatus}
                         onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus)}
-                        className="h-10 w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[12px] font-bold text-[#0F172A] capitalize focus:border-[#2563EB] focus:outline-none"
+                        disabled={!canDo('/dashboard/orders', 'edit')}
+                        className="h-10 w-full appearance-none rounded-xl border border-[#CBD5E1] bg-white px-3 pr-8 text-[12px] font-bold text-[#0F172A] capitalize focus:border-[#2563EB] focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-[#94A3B8]"
                         style={{ fontSize: '12px' }}
                       >
                         {PAYMENT_STATUSES.map((pst) => (
@@ -545,7 +552,7 @@ export default function OrderStatus({
                     </p>
                   )}
                 </div>
-                {currentOrder.status === 'delivered' && hasPhotos && (
+                {currentOrder.status === 'delivered' && hasPhotos && canDo('/dashboard/orders', 'delete') && (
                   <button
                     type="button"
                     disabled={deletingPhotos}
@@ -644,7 +651,8 @@ export default function OrderStatus({
 
           {/* Modal Footer */}
           <div className="flex shrink-0 items-center justify-between border-t border-[#E2E8F0] bg-white px-6 py-4">
-            <button
+            {canDo('/dashboard/orders','delete') && (
+              <button
               type="button"
               onClick={() => {
                 onDeleteRequest?.(currentOrder);
@@ -656,8 +664,9 @@ export default function OrderStatus({
               <Trash2 size={15} />
               <span style={{ fontSize: '12px' }}>Delete Order</span>
             </button>
+            )}
 
-            <div className="flex items-center gap-2.5">
+            <div className="ml-auto flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={onClose}
@@ -667,7 +676,8 @@ export default function OrderStatus({
                 Close
               </button>
 
-              <button
+              {canDo('/dashboard/orders','edit') && (
+                <button
                 type="button"
                 disabled={saving}
                 onClick={handleSave}
@@ -681,6 +691,7 @@ export default function OrderStatus({
                 )}
                 <span style={{ fontSize: '12px' }}>{saving ? 'Saving...' : 'Save'}</span>
               </button>
+              )}
             </div>
           </div>
         </div>

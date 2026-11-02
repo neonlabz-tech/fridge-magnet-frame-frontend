@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { InventoryItem } from '@/types/inventory';
 import { apiV1Url } from '@/lib/backendUrl';
+import { readSession } from '@/lib/crm';
+
+/** Login id of the person changing stock right now (BO001, admin ...). */
+export const currentActorId = (): string => {
+  try {
+    return readSession()?.username || 'admin';
+  } catch {
+    return 'admin';
+  }
+};
 
 /**
  * Inventory lives in the backend (MongoDB). localStorage is only a read cache so

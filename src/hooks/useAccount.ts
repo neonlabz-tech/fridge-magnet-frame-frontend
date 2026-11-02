@@ -121,6 +121,9 @@ export const useAccount = () => {
       throw new Error(json?.message || `Update failed (${res.status})`);
     }
 
+    // After a password change the server revokes the old token and sends a fresh one.
+    if (json?.token) localStorage.setItem('adminToken', String(json.token));
+
     const next = normalizeProfile(json);
     setProfile(next);
     syncCachedUser(next);

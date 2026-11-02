@@ -1,5 +1,6 @@
 'use client';
 
+import { canDo } from '@/lib/roles';
 import { useEffect, useState, useMemo } from 'react';
 import {
   CheckSquare,
@@ -26,6 +27,7 @@ import { fetchOrders } from '@/lib/orders';
 import { TableSkeleton } from '@/components/dashboard/shared/Skeleton';
 import { apiV1Url } from '@/lib/backendUrl';
 import { syncOrderStock } from '@/lib/orderStock';
+import { readDeliveries, writeDeliveries } from '@/lib/deliveryStore';
 import type { Order, OrderStatus as OrderStatusType } from '@/types/order';
 import { useToastStore } from '@/store/toastStore';
 
@@ -38,12 +40,6 @@ export default function OrdersPage() {
   const [labelTarget, setLabelTarget] = useState<Order | null>(null);
   const [addOrderOpen, setAddOrderOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Allow deep links such as /dashboard/orders?search=ORD-123 (used by the customers page)
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get('search');
-    if (q) setSearchTerm(q);
-  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -173,7 +169,7 @@ export default function OrdersPage() {
   };
 
   const handleBulkUpdateStatus = async (newStatus: OrderStatusType) => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || !canDo('/dashboard/orders', 'edit')) return;
 
     const done = new Set<string>();
     let lastError = '';
@@ -228,9 +224,17 @@ export default function OrdersPage() {
     if (!deleteTarget) return;
 
     try {
-      await fetch(apiV1Url(`/orders/${deleteTarget.id}`), {
+      const res = await fetch(apiV1Url(`/orders/${deleteTarget.id}`), {
         method: 'DELETE',
       }).catch(() => null);
+      if (!res || (!res.ok && res.status !== 404)) {
+        addToast(`Could not delete ${deleteTarget.orderId}. Please try again.`, 'error');
+        setDeleteTarget(null);
+        return;
+      }
+      // Give the materials back to inventory (only if this order had taken them), and drop its delivery from the local cache.
+      await syncOrderStock(deleteTarget, 'canceled').catch(() => null);
+      writeDeliveries(readDeliveries().filter((d) => d.orderId.replace(/^#/, '') !== deleteTarget.orderId.replace(/^#/, '')));
 
       setOrders((prev) => prev.filter((o) => o.id !== deleteTarget.id));
       setSelectedIds((prev) => {
@@ -248,17 +252,17 @@ export default function OrdersPage() {
   return (
     <div className="compact-ui relative w-full min-h-full px-3 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-8 lg:pb-4 lg:pt-4 max-w-7xl mx-auto lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
       {/* Modals */}
-      <ShippingLabelModal
-        order={labelTarget}
-        isOpen={Boolean(labelTarget)}
-        onClose={() => setLabelTarget(null)}
-        autoPrint
-      />
       <DeleteOrderModal
         isOpen={Boolean(deleteTarget)}
         order={deleteTarget}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
+      />
+
+      <ShippingLabelModal
+        order={labelTarget}
+        isOpen={Boolean(labelTarget)}
+        onClose={() => setLabelTarget(null)}
       />
 
       <OrderStatus
@@ -357,7 +361,8 @@ export default function OrdersPage() {
               </span>
             </div>
 
-            {/* Quick Status Buttons */}
+            {/* Quick Status Buttons (need Edit permission) */}
+            {canDo('/dashboard/orders', 'edit') && (
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -377,6 +382,7 @@ export default function OrdersPage() {
                 <span>Mark Delivered</span>
               </button>
             </div>
+            )}
 
             {/* Export Selected */}
             <button

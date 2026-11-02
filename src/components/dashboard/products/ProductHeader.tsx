@@ -1,3 +1,4 @@
+import { canDo } from '@/lib/roles';
 import { SquarePlus } from 'lucide-react';
 
 interface ProductHeaderProps {
@@ -23,13 +24,15 @@ export default function ProductHeader({ onAddClick }: ProductHeaderProps) {
 
       {/* Add Product button */}
       <div className="flex justify-end pb-3 pt-2">
-        <button
+        {canDo('/dashboard/products','create') && (
+          <button
           type="button"
           onClick={onAddClick}
           className="whitespace-nowrap flex-shrink-0 flex items-center gap-2 rounded-lg bg-[#BC0000] px-5 py-2.5 text-sm sm:text-[15px] font-bold text-white shadow-sm hover:opacity-90 transition-colors"
         >
           + Add Product
         </button>
+        )}
       </div>
     </section>
   );

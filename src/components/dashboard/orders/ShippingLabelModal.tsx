@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react';
 import Image from 'next/image';
-import { Printer, X } from 'lucide-react';
+import { Download, Printer, X } from 'lucide-react';
+import { downloadShippingLabelPdf } from '@/lib/labelPdf';
 import type { Order } from '@/types/order';
 
 interface ShippingLabelModalProps {
@@ -124,6 +125,19 @@ export default function ShippingLabelModal({ order, isOpen, onClose, autoPrint }
     window.print();
   };
 
+  const handleDownloadPdf = () => {
+    const parts = (order.shippingAddress || '').split(',').map((x) => x.trim()).filter(Boolean);
+    void downloadShippingLabelPdf(
+      {
+        orderId: order.orderId,
+        customerName: order.customerName,
+        phone: order.phone || '',
+        addressLines: [parts[0] || '', parts.slice(1, 3).join(', '), parts.slice(3).join(', ')],
+      },
+      `shipping-label-${order.orderId.replace(/^#/, '')}.pdf`
+    ).catch(() => undefined);
+  };
+
   const addressParts = (order.shippingAddress || '')
     .split(',')
     .map((s) => s.trim())
@@ -143,6 +157,14 @@ export default function ShippingLabelModal({ order, isOpen, onClose, autoPrint }
             <p className="text-xs text-[#64748B]">Ready to print and paste on package</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-xs font-bold text-[#334155] shadow-xs transition hover:bg-slate-50"
+            >
+              <Download size={16} />
+              Download PDF
+            </button>
             <button
               type="button"
               onClick={handlePrint}
