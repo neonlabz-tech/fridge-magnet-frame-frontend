@@ -100,7 +100,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 flex h-screen h-dvh flex-col transition-[transform,width] duration-300 ${
+      className={`fixed inset-y-0 left-0 z-40 flex flex-col transition-[transform,width] duration-300 ${
         open ? 'translate-x-0' : '-translate-x-full'
       } lg:translate-x-0 w-[252px] ${collapsed ? 'lg:w-[76px]' : 'lg:w-[252px]'}`}
       style={{
