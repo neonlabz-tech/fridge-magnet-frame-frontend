@@ -3,7 +3,7 @@
 import { canDo } from '@/lib/roles';
 import StatCard from '@/components/dashboard/shared/StatCard';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileText, CheckCircle2, Eye, FileUp, Pencil, Plus, Search, Trash2, Users, CalendarClock, ListChecks } from 'lucide-react';
+import { CheckSquare, X, FileText, CheckCircle2, Eye, FileUp, Pencil, Plus, Search, Trash2, Users, CalendarClock, ListChecks } from 'lucide-react';
 import type { DemoSession } from '@/lib/demoAuth';
 import { useToastStore } from '@/store/toastStore';
 import type { Order } from '@/types/order';
@@ -15,7 +15,7 @@ import {
   SOURCES,
   displayPerson,
   isInProgress,
-  phoneDigits,
+  samePhone,
   nextCustomerId,
   nextLeadId,
   salesOf,
@@ -73,6 +73,9 @@ export default function LeadsView() {
   const [from, setFrom] = useState(toInput(new Date()));
   const [to, setTo] = useState(toInput(new Date()));
   const [page, setPage] = useState(1);
+  const [showAll, setShowAll] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const [profile, setProfile] = useState<{ lead: Lead; isNew: boolean } | null>(null);
   const [deleting, setDeleting] = useState<Lead | null>(null);
@@ -100,8 +103,9 @@ export default function LeadsView() {
     return subscribeCrm(reload);
   }, [reload]);
 
-  /* Everyone (admin and team members) sees every lead. */
-  const visible = leads;
+  /* Admin sees every lead. A team member only sees the leads assigned to them
+     (the full list is still loaded so a duplicate phone number and the next lead ID are checked against everyone's leads). */
+  const visible = useMemo(() => (isAdmin ? leads : leads.filter((l) => l.owner.toLowerCase() === me.toLowerCase())), [leads, isAdmin, me]);
   const downloadPdf = () => {
     const today = new Date().toISOString().slice(0, 10);
     void downloadReportPdf({
@@ -170,12 +174,24 @@ export default function LeadsView() {
         (owner === 'all' || (owner === '' ? !l.owner : l.owner === owner)) &&
         (!q || [l.id, l.business, l.phone].some((v) => v.toLowerCase().includes(q)))
     )
-      // ML001, ML002, ML003 ... (ascending by lead number)
-      .sort((a, b) => (Number(a.id.replace(/\D/g, '')) || 0) - (Number(b.id.replace(/\D/g, '')) || 0));
+      // Newest lead first (by date added, then by lead number).
+      .sort((a, b) => {
+        const byDate = (Date.parse(b.dateAdded) || 0) - (Date.parse(a.dateAdded) || 0);
+        return byDate || (Number(b.id.replace(/\D/g, '')) || 0) - (Number(a.id.replace(/\D/g, '')) || 0);
+      });
   }, [visible, search, status, source, owner, dateRange, from, to]);
 
   const safePage = Math.min(page, Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
-  const rows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const rows = showAll ? filtered : filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Bulk delete (admin only): only leads that are still in the filtered list count as selected.
+  const canBulk = isAdmin && canDo('/dashboard/leads', 'delete');
+  const filteredIds = new Set(filtered.map((l) => l.id));
+  const chosen = selected.filter((id) => filteredIds.has(id));
+  const allRowsChosen = rows.length > 0 && rows.every((l) => chosen.includes(l.id));
+  const toggleRows = () =>
+    setSelected((prev) => (allRowsChosen ? prev.filter((id) => !rows.some((l) => l.id === id)) : [...new Set([...prev, ...rows.map((l) => l.id)])]));
+  const toggleOne = (id: string) => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const eod = new Date();
   eod.setHours(23, 59, 59, 999);
@@ -230,9 +246,9 @@ export default function LeadsView() {
     const isNew = profile?.isNew;
     // A phone number can only belong to one lead (checked against the latest data).
     const latest = await refreshLeads();
-    const clash = latest.find((l) => l.id !== v.id && phoneDigits(l.phone) === phoneDigits(v.phone));
+    const clash = latest.find((l) => l.id !== v.id && samePhone(l.phone, v.phone));
     if (clash) {
-      addToast(`This phone number is already uploaded in lead ${clash.id}.`, 'error');
+      addToast(`This phone number is already added in lead ${clash.id}.`, 'error');
       return;
     }
     const now = new Date().toISOString();
@@ -368,18 +384,24 @@ export default function LeadsView() {
             {canDo('/dashboard/leads', 'create') && <button type="button" onClick={openNew} className={btnPrimary}><Plus size={14} /> Add Lead</button>}
           </div>
 
-          <div className="overflow-x-auto">
+          {/* With "All" the table scrolls inside its own box so the pagination bar stays in view. */}
+          <div className={`overflow-x-auto ${showAll ? 'max-h-[65vh] overflow-y-auto' : ''}`}>
             <table className="w-full min-w-[1040px] border-collapse text-left">
               <thead>
                 <tr className="bg-[#F8FAFC]">
+                  {canBulk && (
+                    <th className="sticky top-0 z-10 w-10 bg-[#F8FAFC] px-4 py-3">
+                      <input type="checkbox" aria-label="Select all leads on this page" checked={allRowsChosen} onChange={toggleRows} className="size-4 accent-[#2563EB]" />
+                    </th>
+                  )}
                   {['#', 'Lead ID', 'Phone / Customer', 'Date Added', 'Source', 'Status', 'Call status', 'Next follow-up', 'Follow-ups', 'Person', 'Actions'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#64748B]">{h}</th>
+                    <th key={h} className="sticky top-0 z-10 bg-[#F8FAFC] px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#64748B]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F1F5F9]">
                 {rows.length === 0 ? (
-                  <tr><td colSpan={11} className="py-14 text-center text-xs text-[#94A3B8]">{filtered.length === 0 && visible.length > 0 ? 'No leads match the selected filters.' : isAdmin ? 'No leads match. Click "Add Lead" to create one.' : 'No leads yet. Click "Add Lead" to create one.'}</td></tr>
+                  <tr><td colSpan={canBulk ? 12 : 11} className="py-14 text-center text-xs text-[#94A3B8]">{filtered.length === 0 && visible.length > 0 ? 'No leads match the selected filters.' : isAdmin ? 'No leads match. Click "Add Lead" to create one.' : 'No leads yet. Click "Add Lead" to create one.'}</td></tr>
                 ) : (
                   rows.map((l, idx) => {
                     const overdue = !CLOSED_STATUSES.includes(l.status) && l.nextFollowUp && new Date(l.nextFollowUp) < new Date();
@@ -387,7 +409,12 @@ export default function LeadsView() {
                     const lastBy = records.length ? records[records.length - 1].by : '';
                     return (
                       <tr key={l.id} className="hover:bg-[#F8FAFC]/80">
-                        <td className="px-4 py-3 text-xs font-semibold text-[#64748B]">{(safePage - 1) * PAGE_SIZE + idx + 1}</td>
+                        {canBulk && (
+                          <td className="w-10 px-4 py-3">
+                            <input type="checkbox" aria-label={`Select ${l.id}`} checked={chosen.includes(l.id)} onChange={() => toggleOne(l.id)} className="size-4 accent-[#2563EB]" />
+                          </td>
+                        )}
+                        <td className="px-4 py-3 text-xs font-semibold text-[#64748B]">{(showAll ? 0 : (safePage - 1) * PAGE_SIZE) + idx + 1}</td>
                         <td className="px-4 py-3"><button type="button" title="Open lead" onClick={() => setProfile({ lead: l, isNew: false })} className="rounded-md bg-[#EFF6FF] px-2 py-1 text-xs font-bold text-[#2563EB] hover:bg-[#DBEAFE] hover:underline">{l.id}</button></td>
                         <td className="px-4 py-3"><p className="text-xs font-bold text-[#0F172A]">{l.phone}</p><p className="text-xs text-[#94A3B8]">{l.business}</p></td>
                         <td className="whitespace-nowrap px-4 py-3"><p className="text-xs font-semibold text-[#0F172A]">{l.dateAdded ? fmtDate(l.dateAdded) : '-'}</p><p className="text-xs text-[#94A3B8]">{l.dateAdded ? fmtTime(l.dateAdded) : ''}</p></td>
@@ -410,7 +437,18 @@ export default function LeadsView() {
               </tbody>
             </table>
           </div>
-          <TableFooter page={safePage} pageSize={PAGE_SIZE} total={filtered.length} noun="leads" onPage={setPage} />
+          <TableFooter
+            page={safePage}
+            pageSize={PAGE_SIZE}
+            total={filtered.length}
+            noun="leads"
+            onPage={(p) => {
+              setShowAll(false);
+              setPage(p);
+            }}
+            onAll={() => setShowAll(true)}
+            allActive={showAll}
+          />
         </section>
       )}
 
@@ -463,6 +501,49 @@ export default function LeadsView() {
         }}
       />
 
+      {/* Bulk actions floating bar (admin): shows when leads are ticked, same style as the Orders page. */}
+      {canBulk && chosen.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100vw-1.5rem)] -translate-x-1/2 sm:bottom-6 sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-700 bg-[#071C40] px-4 py-3 text-white shadow-2xl sm:gap-3 sm:px-6">
+            <div className="flex items-center gap-2 border-r border-slate-700 pr-2">
+              <CheckSquare size={15} className="text-[#38BDF8]" />
+              <span className="whitespace-nowrap text-[12px] font-bold text-white">{chosen.length} selected</span>
+            </div>
+            <button
+              type="button"
+              disabled={chosen.length === filtered.length}
+              onClick={() => setSelected(filtered.map((l) => l.id))}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-white/10 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Select all ({filtered.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelected([])}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-white/10 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 transition hover:bg-white/20"
+            >
+              Unselect all
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkOpen(true)}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-rose-500 px-2.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-rose-600"
+            >
+              <Trash2 size={12} /> Delete ({chosen.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelected([])}
+              className="ml-1 flex size-7 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white"
+              title="Close"
+              aria-label="Clear selection"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         open={!!deleting}
         title="Delete lead?"
@@ -470,6 +551,19 @@ export default function LeadsView() {
         confirmLabel="Delete"
         onCancel={() => setDeleting(null)}
         onConfirm={async () => { if (deleting) await mutate((all) => all.filter((l) => l.id !== deleting.id), 'Lead deleted.'); setDeleting(null); }}
+      />
+
+      <ConfirmModal
+        open={bulkOpen}
+        title={`Delete ${chosen.length} lead${chosen.length === 1 ? '' : 's'}?`}
+        message={<>The selected <b>{chosen.length}</b> lead{chosen.length === 1 ? '' : 's'} and their follow-up history will be removed. This cannot be undone.</>}
+        confirmLabel="Delete"
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={async () => {
+          const ids = new Set(chosen);
+          if (ids.size && (await mutate((all) => all.filter((l) => !ids.has(l.id)), `${ids.size} lead${ids.size === 1 ? '' : 's'} deleted.`))) setSelected([]);
+          setBulkOpen(false);
+        }}
       />
     </div>
   );

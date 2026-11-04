@@ -23,6 +23,14 @@ export const displayPerson = (u?: string) => (!u ? '-' : u.toLowerCase() === 'ad
 /** Digits only (phone numbers are compared without spaces or dashes). */
 export const phoneDigits = (p: string) => String(p ?? '').replace(/\D/g, '');
 
+/** Same number whatever the format: 0778945612, +94778945612 and 94 77 894 5612 all match (last 9 digits). */
+export const samePhone = (a: string, b: string) => {
+  const x = phoneDigits(a);
+  const y = phoneDigits(b);
+  if (!x || !y) return false;
+  return x.length >= 9 && y.length >= 9 ? x.slice(-9) === y.slice(-9) : x === y;
+};
+
 export interface FollowUp {
   n: number; // 0 = system entry (reassign etc.)
   at: string; // ISO

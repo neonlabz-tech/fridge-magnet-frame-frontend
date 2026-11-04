@@ -185,16 +185,21 @@ export function TableFooter({
   total,
   noun,
   onPage,
+  onAll,
+  allActive = false,
 }: {
   page: number;
   pageSize: number;
   total: number;
   noun: string;
   onPage: (p: number) => void;
+  /** Optional "All" button: shows every row on one page (the caller shows all rows while `allActive`). */
+  onAll?: () => void;
+  allActive?: boolean;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
+  const from = total === 0 ? 0 : allActive ? 1 : (page - 1) * pageSize + 1;
+  const to = allActive ? total : Math.min(page * pageSize, total);
   return (
     <div className="flex flex-col items-center gap-3 border-t border-[#E2E8F0] bg-white px-5 py-3 sm:flex-row sm:justify-between">
       <p className="text-xs font-medium text-[#64748B]">
@@ -202,7 +207,7 @@ export function TableFooter({
       </p>
       {totalPages > 1 && (
         <div className="flex items-center gap-1">
-          <PageBtn label="Previous page" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+          <PageBtn label="Previous page" disabled={allActive || page <= 1} onClick={() => onPage(page - 1)}>
             <ChevronLeft size={14} />
           </PageBtn>
           {getPageNumbers(page, totalPages).map((p, i) =>
@@ -211,14 +216,19 @@ export function TableFooter({
                 ...
               </span>
             ) : (
-              <PageBtn key={p} active={p === page} label={`Page ${p}`} onClick={() => onPage(p)}>
+              <PageBtn key={p} active={!allActive && p === page} label={`Page ${p}`} onClick={() => onPage(p)}>
                 {p}
               </PageBtn>
             )
           )}
-          <PageBtn label="Next page" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
+          <PageBtn label="Next page" disabled={allActive || page >= totalPages} onClick={() => onPage(page + 1)}>
             <ChevronRight size={14} />
           </PageBtn>
+          {onAll && (
+            <PageBtn active={allActive} label="Show all" onClick={onAll}>
+              All
+            </PageBtn>
+          )}
         </div>
       )}
     </div>
