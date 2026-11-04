@@ -10,6 +10,7 @@ import {
   SOURCES,
   displayPerson,
   phoneDigits,
+  samePhone,
   type CrmUser,
   type FollowUp,
   type Lead,
@@ -87,7 +88,7 @@ export default function LeadProfileModal({
   const dupOf = (phone: string) => {
     const digits = phoneDigits(phone);
     if (digits.length < 10) return null;
-    return leads.find((l) => l.id !== d.id && phoneDigits(l.phone) === digits) ?? null;
+    return leads.find((l) => l.id !== d.id && samePhone(l.phone, phone)) ?? null;
   };
   const dup = dupOf(d.phone);
 
@@ -142,7 +143,7 @@ export default function LeadProfileModal({
     if (!d.business.trim()) errors.business = 'Business / customer name is required.';
     if (!d.phone.trim()) errors.phone = 'Phone number is required.';
     else if (!/^\d{10}$/.test(d.phone.trim())) errors.phone = 'Phone number must be exactly 10 digits (e.g. 0771234567).';
-    else if (dup) errors.phone = `This phone number is already uploaded in lead ${dup.id}.`;
+    else if (dup) errors.phone = `This phone number is already added in lead ${dup.id}.`;
     setFe(errors);
     if (Object.keys(errors).length) {
       setErr('Please fix the highlighted fields.');
@@ -152,7 +153,7 @@ export default function LeadProfileModal({
     onSave({ lead: { ...d, business: d.business.trim(), phone: d.phone.trim() }, converting: becomingConverted });
   };
 
-  const phoneError = fe.phone || (dup ? `This phone number is already uploaded in lead ${dup.id}.` : '');
+  const phoneError = fe.phone || (dup ? `This phone number is already added in lead ${dup.id}.` : '');
 
   return (
     <ModalShell
