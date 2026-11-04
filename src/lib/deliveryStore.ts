@@ -107,28 +107,8 @@ export function refreshDeliveries(): Promise<Delivery[]> {
   inflight = (async () => {
     const remote = await fetchDeliveries();
     if (remote === null) return readDeliveries();
-    if (remote.length === 0) {
-      const local = readDeliveries();
-      if (local.length) {
-        for (const d of local) {
-          try {
-            await fetch(endpoint(), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: bare(d.id), ...payload(d) }),
-            });
-          } catch {
-            break;
-          }
-        }
-        const again = await fetchDeliveries();
-        if (again && again.length) {
-          writeDeliveries(again);
-          return again;
-        }
-        return local;
-      }
-    }
+    // The backend is the only source of truth: an empty list stays empty
+    // (old browser-cached deliveries are never uploaded again).
     writeDeliveries(remote);
     return remote;
   })().finally(() => {
