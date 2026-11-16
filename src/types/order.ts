@@ -45,4 +45,6 @@ export interface Order {
   /** Set once the customer's uploaded photos were deleted from storage. */
   imagesDeletedAt?: string;
   items?: OrderItem[];
+  /** Direct orders: total magnets (quantity x magnets per product), used for sales targets. */
+  magnets?: number;
 }

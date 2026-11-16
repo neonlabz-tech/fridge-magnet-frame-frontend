@@ -54,7 +54,11 @@ export interface OrderInfo {
   address: string;
   phone: string;
   convertedAt: string;
+  /** Magnets in the sale = quantity x magnets per product (product `imagecount`). Older sales only have `quantity`. */
+  magnets?: number;
 }
+
+export const magnetsOf = (s: Pick<OrderInfo, 'quantity' | 'magnets'>) => Number(s.magnets) || Number(s.quantity) || 0;
 
 export interface Lead {
   id: string; // ML001
@@ -517,7 +521,7 @@ export function metricsFor(leads: Lead[], username: string): UserMetrics {
     answeredToday: calls.filter((h) => h.callStatus === 'Answered').length,
     leadsToday: mine.filter((l) => sameDay(l.dateAdded)).length,
     convertedMonth: converted.length,
-    magnetsMonth: monthSales.reduce((n, x) => n + (Number(x.quantity) || 0), 0),
+    magnetsMonth: monthSales.reduce((n, x) => n + magnetsOf(x), 0),
     salesMonth: monthSales.reduce((n, x) => n + (x.total ?? 0), 0),
     dueToday: mine.filter((l) => !CLOSED_STATUSES.includes(l.status) && l.nextFollowUp && new Date(l.nextFollowUp) <= eod).length,
   };
