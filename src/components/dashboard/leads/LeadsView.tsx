@@ -297,7 +297,7 @@ export default function LeadsView() {
     await mutate((all) =>
       all.map((l) => {
         if (l.id !== leadId) return l;
-        const sale = { product, quantity: qty, unitPrice: Math.round(total / qty), total, address: l.address, phone: l.phone, convertedAt: now.toISOString() };
+        const sale = { product, quantity: qty, magnets: Number(o.magnets) || qty, unitPrice: Math.round(total / qty), total, address: l.address, phone: l.phone, convertedAt: now.toISOString() };
         return { ...l, order: sale, sales: [...salesOf(l), sale] };
       })
     );
