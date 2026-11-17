@@ -54,6 +54,8 @@ interface CatalogProduct {
   price: number;
   image?: string;
   subtitle?: string;
+  /** Magnets (photos) in one unit of this product. */
+  imagecount?: number;
 }
 
 const API_BASE = (process.env.NEXT_PUBLIC_BACKEND_URL || '/api/v1').replace(/\/$/, '');
@@ -168,6 +170,7 @@ export default function DirectOrderModal({
       price: p.price,
       image: p.primaryImageUrl,
       subtitle: p.series || undefined,
+      imagecount: Number(p.imagecount) || undefined,
     }));
   }, [products]);
 
@@ -339,6 +342,10 @@ export default function DirectOrderModal({
         paymentStatus: 'paid',
         items: selectedItems,
         subtotal,
+        magnets: selectedItems.reduce(
+          (n, it) => n + it.quantity * (Number(catalog.find((p) => p.productId === it.productId)?.imagecount) || 1),
+          0,
+        ),
       };
 
       onOrderCreated(newOrder);

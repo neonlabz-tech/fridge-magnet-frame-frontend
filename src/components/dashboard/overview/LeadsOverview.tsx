@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import MyTargetsCard from '@/components/dashboard/leads/MyTargetsCard';
-import MyCommissionCards from '@/components/dashboard/leads/MyCommissionCards';
 import { fetchTiers, type CommissionTier } from '@/lib/commission';
 import { CalendarClock, CheckCircle2, ListChecks, Users, type LucideIcon } from 'lucide-react';
 import {
@@ -63,10 +62,7 @@ export default function LeadsOverview() {
           </Link>
         ))}
       </div>
-      <MyTargetsCard me={me} leads={leads} targets={targets} highlight />
-      <div className="mt-3">
-        <MyCommissionCards me={me} leads={leads} tiers={tiers} />
-      </div>
+      <MyTargetsCard me={me} leads={leads} targets={targets} highlight variant="overview" tiers={tiers} />
     </section>
   );
 }

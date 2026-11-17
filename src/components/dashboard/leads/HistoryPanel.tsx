@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { inputCls, lkr } from '@/components/dashboard/shared/UiKit';
-import { salesOf, type CrmUser, type Lead } from '@/lib/crm';
+import { magnetsOf, salesOf, type CrmUser, type Lead } from '@/lib/crm';
 import { commissionFor, type CommissionTier } from '@/lib/commission';
 
 type Period = 'today' | 'week' | 'month' | 'year';
@@ -111,7 +111,7 @@ export default function HistoryPanel({
           const r = at(s.convertedAt);
           if (!r) return;
           r.orders += 1;
-          r.magnets += Number(s.quantity) || 0;
+          r.magnets += magnetsOf(s);
           r.sales += s.total ?? 0;
         })
       );
