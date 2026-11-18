@@ -5,6 +5,7 @@ export const LEADS_KEY = 'magnify-crm-leads';
 export const TARGETS_KEY = 'magnify-crm-targets';
 const CHANNEL = 'magnify-crm';
 
+export const LEAD_TYPES = ['Lead', 'Event', 'Gift shop', 'Studio', 'DJ', 'Event hall'] as const;
 export const SOURCES = ['Google Maps', 'Referral', 'Facebook', 'Instagram', 'Walk-in', 'Other'] as const;
 export const CALL_STATUSES = ['Answered', 'Not Contacted', 'No Answer', 'Wrong Number'] as const;
 export const RESULTS = ['Callback', 'Order Discussion', 'No Response', 'Interested', 'Converted'] as const;
@@ -69,6 +70,8 @@ export interface Lead {
   business: string;
   phone: string;
   source: string;
+  /** Kind of lead: Lead, Event, Gift shop, Studio, DJ or Event hall. */
+  type: string;
   callStatus: string;
   result: string;
   product: string;
@@ -186,6 +189,7 @@ const normalizeLead = (r: Partial<Lead>): Lead => ({
   business: String(r.business ?? ''),
   phone: String(r.phone ?? ''),
   source: String(r.source ?? ''),
+  type: String(r.type || 'Lead'),
   callStatus: String(r.callStatus ?? 'Not Contacted'),
   result: String(r.result ?? ''),
   product: String(r.product ?? ''),
@@ -231,6 +235,7 @@ const leadBody = (l: Lead) => ({
   business: l.business,
   phone: l.phone,
   source: l.source,
+  type: l.type || 'Lead',
   callStatus: l.callStatus,
   result: l.result,
   product: l.product,

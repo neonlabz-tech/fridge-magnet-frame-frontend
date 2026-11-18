@@ -13,6 +13,7 @@ import DirectOrderModal from '@/components/dashboard/orders/DirectOrderModal';
 import {
   CLOSED_STATUSES,
   SOURCES,
+  LEAD_TYPES,
   displayPerson,
   isInProgress,
   samePhone,
@@ -69,6 +70,7 @@ export default function LeadsView() {
   const [status, setStatus] = useState('all');
   const [owner, setOwner] = useState('all');
   const [source, setSource] = useState('all');
+  const [type, setType] = useState('all');
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'week' | 'custom'>('all');
   const [from, setFrom] = useState(toInput(new Date()));
   const [to, setTo] = useState(toInput(new Date()));
@@ -120,6 +122,7 @@ export default function LeadsView() {
             { header: 'Phone', w: 1.8 },
             { header: 'Customer', w: 2.2 },
             { header: 'Date', w: 1.6 },
+            { header: 'Type', w: 1.4 },
             { header: 'Source', w: 1.5 },
             { header: 'Status', w: 1.6 },
             { header: 'Call status', w: 1.6 },
@@ -130,6 +133,7 @@ export default function LeadsView() {
             l.phone,
             l.business || '-',
             l.dateAdded ? fmtDate(l.dateAdded) : '-',
+            l.type || 'Lead',
             l.source || '-',
             l.status,
             l.history.some((h) => !h.system) ? l.callStatus : '-',
@@ -171,6 +175,7 @@ export default function LeadsView() {
         inDate(l.dateAdded) &&
         (status === 'all' || l.status === status) &&
         (source === 'all' || l.source === source) &&
+        (type === 'all' || (l.type || 'Lead') === type) &&
         (owner === 'all' || (owner === '' ? !l.owner : l.owner === owner)) &&
         (!q || [l.id, l.business, l.phone].some((v) => v.toLowerCase().includes(q)))
     )
@@ -179,7 +184,7 @@ export default function LeadsView() {
         const byDate = (Date.parse(b.dateAdded) || 0) - (Date.parse(a.dateAdded) || 0);
         return byDate || (Number(b.id.replace(/\D/g, '')) || 0) - (Number(a.id.replace(/\D/g, '')) || 0);
       });
-  }, [visible, search, status, source, owner, dateRange, from, to]);
+  }, [visible, search, status, source, type, owner, dateRange, from, to]);
 
   const safePage = Math.min(page, Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
   const rows = showAll ? filtered : filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
@@ -227,6 +232,7 @@ export default function LeadsView() {
         business: '',
         phone: '',
         source: SOURCES[0],
+        type: LEAD_TYPES[0],
         callStatus: 'Not Contacted',
         result: '',
         product: '',
@@ -359,6 +365,10 @@ export default function LeadsView() {
               <option value="all">All Sources</option>
               {SOURCES.map((s) => <option key={s}>{s}</option>)}
             </select>
+            <select value={type} onChange={(e) => { setType(e.target.value); setPage(1); }} className={`${inputCls} lg:w-36`}>
+              <option value="all">All Types</option>
+              {LEAD_TYPES.map((s) => <option key={s}>{s}</option>)}
+            </select>
             <select value={dateRange} onChange={(e) => { setDateRange(e.target.value as typeof dateRange); setPage(1); }} className={`${inputCls} lg:w-36`}>
               <option value="all">All Dates</option>
               <option value="today">Today</option>
@@ -394,14 +404,14 @@ export default function LeadsView() {
                       <input type="checkbox" aria-label="Select all leads on this page" checked={allRowsChosen} onChange={toggleRows} className="size-4 accent-[#2563EB]" />
                     </th>
                   )}
-                  {['#', 'Lead ID', 'Phone / Customer', 'Date Added', 'Source', 'Status', 'Call status', 'Next follow-up', 'Follow-ups', 'Person', 'Actions'].map((h) => (
+                  {['#', 'Lead ID', 'Phone / Customer', 'Date Added', 'Type', 'Source', 'Status', 'Call status', 'Next follow-up', 'Follow-ups', 'Person', 'Actions'].map((h) => (
                     <th key={h} className="sticky top-0 z-10 bg-[#F8FAFC] px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#64748B]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F1F5F9]">
                 {rows.length === 0 ? (
-                  <tr><td colSpan={canBulk ? 12 : 11} className="py-14 text-center text-xs text-[#94A3B8]">{filtered.length === 0 && visible.length > 0 ? 'No leads match the selected filters.' : isAdmin ? 'No leads match. Click "Add Lead" to create one.' : 'No leads yet. Click "Add Lead" to create one.'}</td></tr>
+                  <tr><td colSpan={canBulk ? 13 : 12} className="py-14 text-center text-xs text-[#94A3B8]">{filtered.length === 0 && visible.length > 0 ? 'No leads match the selected filters.' : isAdmin ? 'No leads match. Click "Add Lead" to create one.' : 'No leads yet. Click "Add Lead" to create one.'}</td></tr>
                 ) : (
                   rows.map((l, idx) => {
                     const overdue = !CLOSED_STATUSES.includes(l.status) && l.nextFollowUp && new Date(l.nextFollowUp) < new Date();
@@ -418,6 +428,7 @@ export default function LeadsView() {
                         <td className="px-4 py-3"><button type="button" title="Open lead" onClick={() => setProfile({ lead: l, isNew: false })} className="rounded-md bg-[#EFF6FF] px-2 py-1 text-xs font-bold text-[#2563EB] hover:bg-[#DBEAFE] hover:underline">{l.id}</button></td>
                         <td className="px-4 py-3"><p className="text-xs font-bold text-[#0F172A]">{l.phone}</p><p className="text-xs text-[#94A3B8]">{l.business}</p></td>
                         <td className="whitespace-nowrap px-4 py-3"><p className="text-xs font-semibold text-[#0F172A]">{l.dateAdded ? fmtDate(l.dateAdded) : '-'}</p><p className="text-xs text-[#94A3B8]">{l.dateAdded ? fmtTime(l.dateAdded) : ''}</p></td>
+                        <td className="px-4 py-3 text-xs font-semibold text-[#0F172A]">{l.type || 'Lead'}</td>
                         <td className="px-4 py-3 text-xs text-[#475569]">{l.source}</td>
                         <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_TONE[l.status]}`}>{l.status}</span></td>
                         <td className="px-4 py-3 text-xs font-semibold text-[#0F172A]">{records.length ? l.callStatus : '-'}</td>
