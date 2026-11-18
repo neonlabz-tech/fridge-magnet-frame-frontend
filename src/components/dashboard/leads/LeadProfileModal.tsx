@@ -8,6 +8,7 @@ import {
   FOLLOW_UP_STATUSES,
   LEAD_STATUSES,
   SOURCES,
+  LEAD_TYPES,
   displayPerson,
   phoneDigits,
   samePhone,
@@ -213,6 +214,12 @@ export default function LeadProfileModal({
             ) : (
               <p className={`mt-1 text-xs ${d.phone && d.phone.length !== 10 ? 'text-rose-600' : 'text-[#94A3B8]'}`}>{d.phone.length}/10 digits</p>
             )}
+          </div>
+          <div>
+            <label className={labelCls}>Type</label>
+            <select className={inputCls} value={d.type || 'Lead'} onChange={(e) => set('type', e.target.value)}>
+              {LEAD_TYPES.map((s) => <option key={s}>{s}</option>)}
+            </select>
           </div>
           <div>
             <label className={labelCls}>Source</label>

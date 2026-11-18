@@ -1,4 +1,4 @@
-import { CALL_STATUSES, LEAD_STATUSES, RESULTS, SOURCES, type FollowUp, type Lead, type LeadStatus } from '@/lib/crm';
+import { CALL_STATUSES, LEAD_STATUSES, LEAD_TYPES, RESULTS, SOURCES, type FollowUp, type Lead, type LeadStatus } from '@/lib/crm';
 import type { ReportDoc } from '@/components/dashboard/reports/reportPdf';
 
 /* ---------- CSV parsing (quotes, commas and line breaks inside quotes, BOM) ---------- */
@@ -45,6 +45,7 @@ const ALIASES: Record<string, string[]> = {
   business: ['customerbusiness', 'business', 'businessname', 'customer', 'customername', 'name'],
   phone: ['phone', 'phonenumber', 'mobile', 'contact', 'contactnumber'],
   source: ['source'],
+  type: ['type', 'leadtype'],
   callStatus: ['callstatus'],
   result: ['result'],
   product: ['interestedpackage', 'interestedproduct', 'product', 'package'],
@@ -178,6 +179,7 @@ export function buildLeads(text: string, owner: string, addedBy = ''): ImportPar
       business,
       phone,
       source: pick(rawSource, SOURCES) || (rawSource ? 'Other' : ''),
+      type: pick(get('type'), LEAD_TYPES) || 'Lead',
       callStatus,
       result,
       product,
