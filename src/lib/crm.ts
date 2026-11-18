@@ -5,6 +5,7 @@ export const LEADS_KEY = 'magnify-crm-leads';
 export const TARGETS_KEY = 'magnify-crm-targets';
 const CHANNEL = 'magnify-crm';
 
+export const LEAD_TYPES = ['Lead', 'Event', 'Gift shop', 'Studio', 'DJ', 'Event hall'] as const;
 export const SOURCES = ['Google Maps', 'Referral', 'Facebook', 'Instagram', 'Walk-in', 'Other'] as const;
 export const CALL_STATUSES = ['Answered', 'Not Contacted', 'No Answer', 'Wrong Number'] as const;
 export const RESULTS = ['Callback', 'Order Discussion', 'No Response', 'Interested', 'Converted'] as const;
@@ -56,6 +57,9 @@ export interface OrderInfo {
   convertedAt: string;
   /** Magnets in the sale = quantity x magnets per product (product `imagecount`). Older sales only have `quantity`. */
   magnets?: number;
+  /** Order this sale came from; set so a deleted / cancelled order stops counting. */
+  orderId?: string;
+  canceled?: boolean;
 }
 
 export const magnetsOf = (s: Pick<OrderInfo, 'quantity' | 'magnets'>) => Number(s.magnets) || Number(s.quantity) || 0;
@@ -66,6 +70,8 @@ export interface Lead {
   business: string;
   phone: string;
   source: string;
+  /** Kind of lead: Lead, Event, Gift shop, Studio, DJ or Event hall. */
+  type: string;
   callStatus: string;
   result: string;
   product: string;
@@ -183,6 +189,7 @@ const normalizeLead = (r: Partial<Lead>): Lead => ({
   business: String(r.business ?? ''),
   phone: String(r.phone ?? ''),
   source: String(r.source ?? ''),
+  type: String(r.type || 'Lead'),
   callStatus: String(r.callStatus ?? 'Not Contacted'),
   result: String(r.result ?? ''),
   product: String(r.product ?? ''),
@@ -228,6 +235,7 @@ const leadBody = (l: Lead) => ({
   business: l.business,
   phone: l.phone,
   source: l.source,
+  type: l.type || 'Lead',
   callStatus: l.callStatus,
   result: l.result,
   product: l.product,
@@ -489,7 +497,10 @@ export const sameDay = (iso: string, d = new Date()) => {
   return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth() && x.getDate() === d.getDate();
 };
 /** All sales of a lead (older leads only have the single `order`). */
-export const salesOf = (l: Lead): OrderInfo[] => (l.sales?.length ? l.sales : l.order ? [l.order] : []);
+/** Every recorded sale, including cancelled ones (use when saving). */
+export const allSalesOf = (l: Lead): OrderInfo[] => (l.sales?.length ? l.sales : l.order ? [l.order] : []);
+/** Sales that count towards targets / commission (cancelled orders excluded). */
+export const salesOf = (l: Lead): OrderInfo[] => allSalesOf(l).filter((x) => !x.canceled);
 export const sameMonth = (iso: string, d = new Date()) => {
   const x = new Date(iso);
   return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth();
